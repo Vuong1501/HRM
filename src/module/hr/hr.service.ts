@@ -28,7 +28,6 @@ export class HrService {
       role: UserRole.EMPLOYEE,
       status: UserStatus.INVITED,
       inviteToken: token,
-      inviteExpiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
     const user = await this.userRepository.save(entity);
 

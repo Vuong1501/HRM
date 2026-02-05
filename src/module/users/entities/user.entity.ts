@@ -38,9 +38,6 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   inviteToken: string | null;
 
-  @Column({ nullable: true })
-  inviteExpiredAt: Date;
-
   @CreateDateColumn()
   createdAt: Date;
 }
