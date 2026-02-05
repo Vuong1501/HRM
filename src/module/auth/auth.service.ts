@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
@@ -14,6 +15,7 @@ import { LoginDevDto } from './dto/login-dev.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(User)
     private userRepositoy: Repository<User>,
@@ -27,9 +29,9 @@ export class AuthService {
       const invitedUser = await this.userRepositoy.findOne({
         where: { inviteToken: token },
       });
-      console.log('vào if');
 
       if (!invitedUser) {
+        this.logger.warn(`Invalid invite token`);
         throw new UnauthorizedException('Invalid invite');
       }
 
@@ -39,6 +41,7 @@ export class AuthService {
         invitedUser.inviteToken = null;
 
         await this.userRepositoy.save(invitedUser);
+        this.logger.log(`User activated via invite: ${invitedUser.email}`);
       }
       user = invitedUser;
     } else {
@@ -46,6 +49,7 @@ export class AuthService {
         where: [{ zohoId: profile.zohoId }, { email: profile.email }],
       });
       if (!existedUser) {
+        this.logger.warn(`Zoho user not registered: ${profile.email}`);
         throw new UnauthorizedException('User not registered');
       }
       user = existedUser;
@@ -56,7 +60,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
     };
-
+    this.logger.log(`Zoho login success: ${user.email}`);
     return {
       accessToken: await this.jwtService.signAsync(payload),
       user: this.userService.toResponse(user),
@@ -65,6 +69,7 @@ export class AuthService {
 
   async devLogin(dto: LoginDevDto) {
     if (process.env.NODE_ENV === 'production') {
+      this.logger.warn('Dev chỉ login ở development');
       throw new ForbiddenException('Dev login disabled in production');
     }
 
@@ -73,12 +78,14 @@ export class AuthService {
     });
 
     if (!user) {
+      this.logger.warn(`Dev login user not found: ${dto.email}`);
       throw new NotFoundException('User not found');
     }
     const payload = {
       sub: user.id,
       role: user.role,
     };
+    this.logger.log(`Dev login success: ${user.email}`);
     return {
       accessToken: this.jwtService.sign(payload),
     };

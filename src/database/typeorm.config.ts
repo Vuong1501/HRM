@@ -9,4 +9,6 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
   database: 'hrm_base',
   autoLoadEntities: true,
   synchronize: true,
+  logging:
+    process.env.NODE_ENV === 'production' ? ['error'] : ['query', 'error'],
 };
