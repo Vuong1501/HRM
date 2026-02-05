@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Req,
+  Post,
+  Body,
   UseGuards,
   UnauthorizedException,
   Res,
@@ -11,6 +13,7 @@ import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import { ZohoAuthGuard } from 'src/common/guards/zoho.guard';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { LoginDevDto } from './dto/login-dev.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -43,5 +46,11 @@ export class AuthController {
     return res.redirect(
       `http://localhost:5173/login-success?accessToken=${result.accessToken}&user=${encodeURIComponent(JSON.stringify(result.user))}`,
     );
+  }
+
+  @Post('dev-login')
+  @ApiOperation({ summary: 'DEV login để test các quyền' })
+  devLogin(@Body() dto: LoginDevDto) {
+    return this.authService.devLogin(dto);
   }
 }

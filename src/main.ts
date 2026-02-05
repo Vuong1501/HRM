@@ -23,7 +23,7 @@ async function bootstrap() {
     .setDescription('API documentation')
     .setVersion('1.0')
     .addServer('http://localhost:3000')
-    // .addBearerAuth() // nếu có JWT
+    .addBearerAuth() // nếu có JWT
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);

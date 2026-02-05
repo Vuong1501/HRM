@@ -1,10 +1,16 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import { LoginDevDto } from './dto/login-dev.dto';
 
 @Injectable()
 export class AuthService {
@@ -54,6 +60,27 @@ export class AuthService {
     return {
       accessToken: await this.jwtService.signAsync(payload),
       user: this.userService.toResponse(user),
+    };
+  }
+
+  async devLogin(dto: LoginDevDto) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Dev login disabled in production');
+    }
+
+    const user = await this.userRepositoy.findOne({
+      where: { email: dto.email },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const payload = {
+      sub: user.id,
+      role: user.role,
+    };
+    return {
+      accessToken: this.jwtService.sign(payload),
     };
   }
 }
