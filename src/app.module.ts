@@ -8,6 +8,7 @@ import { typeOrmConfig } from './database/typeorm.config';
 import { ConfigModule } from '@nestjs/config';
 import { HrModule } from './module/hr/hr.module';
 import { MailModule } from './module/mail/mail.module';
+import { InviteModule } from './module/invite/invite.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { MailModule } from './module/mail/mail.module';
     UsersModule,
     HrModule,
     MailModule,
+    InviteModule,
   ],
   controllers: [AppController],
   providers: [AppService],

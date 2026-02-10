@@ -5,6 +5,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import passport from 'passport';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const isProd = process.env.NODE_ENV === 'production';
@@ -13,6 +14,7 @@ async function bootstrap() {
       ? ['log', 'error', 'warn']
       : ['log', 'error', 'warn', 'debug', 'verbose'],
   });
+  app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

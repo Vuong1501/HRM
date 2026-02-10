@@ -115,3 +115,12 @@ ZOHO_STRATEGY,
 -mail.service chưa làm được
 đã xong type
 khi bị ... ở chỗ import thì khi cài thêm các thư viên type/.... thì nó hết
+-đang tách luông invite với accept riêng
+
+-Cần xem upload file kiểu gì(upload nhân viên để mời)
+
+- làm tính năng mời 1 loạt khi upload file(giờ xem file đó nó có những thông tin gì, mình cần những thông tin gì), đã có api mời 1 người
+- xem xem có cần kiểm tra đó là mail zoho không
+- cty có zoho riêng, quản lí trên zoho, nên xem có cách nào quản lí zoho thì sẽ tự động quản lí các user đó ở hệ thống của mình không
+
+

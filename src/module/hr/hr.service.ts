@@ -31,7 +31,8 @@ export class HrService {
     });
     const user = await this.userRepository.save(entity);
 
-    const link = `http://localhost:5173/invite?token=${token}`;
+    const link = `http://localhost:3000/invite/accept?token=${token}`;
+    // const link = `https://undemonstrated-kinley-mischievously.ngrok-free.dev/invite/accept?token=${token}`;
 
     await this.mailService.sendInvite(user.email, link);
 

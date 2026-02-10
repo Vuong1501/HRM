@@ -16,8 +16,8 @@ import {
 export class HrController {
   constructor(private readonly hrService: HrService) {}
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('hr')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('hr')
   @Post('invite')
   @ApiOperation({ summary: 'HR mời nhân viên mới' })
   @ApiResponse({ status: 201, description: 'Mời thành công' })

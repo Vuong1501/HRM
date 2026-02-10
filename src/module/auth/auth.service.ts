@@ -23,36 +23,41 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async loginZoho(profile: Express.User, token: string) {
-    let user: User;
-    if (token) {
-      const invitedUser = await this.userRepositoy.findOne({
-        where: { inviteToken: token },
+  async loginZoho(profile: Express.User, inviteToken?: string) {
+    let user: User | null = null;
+
+    if (inviteToken) {
+      user = await this.userRepositoy.findOne({
+        where: { inviteToken },
       });
 
-      if (!invitedUser) {
-        this.logger.warn(`Invalid invite token`);
-        throw new UnauthorizedException('Invalid invite');
-      }
+      if (!user) throw new UnauthorizedException('Invalid invite');
 
-      if (invitedUser.status === UserStatus.INVITED) {
-        invitedUser.status = UserStatus.ACTIVE;
-        invitedUser.zohoId = profile.zohoId;
-        invitedUser.inviteToken = null;
+      if (user.status !== UserStatus.INVITED)
+        throw new UnauthorizedException('Invite already used');
 
-        await this.userRepositoy.save(invitedUser);
-        this.logger.log(`User activated via invite: ${invitedUser.email}`);
-      }
-      user = invitedUser;
+      if (profile.email !== user.email)
+        throw new ForbiddenException('Email Zoho không khớp lời mời');
+
+      user.status = UserStatus.ACTIVE;
+      user.zohoId = profile.zohoId;
+      user.inviteToken = null;
+
+      await this.userRepositoy.save(user);
     } else {
-      const existedUser = await this.userRepositoy.findOne({
+      user = await this.userRepositoy.findOne({
         where: [{ zohoId: profile.zohoId }, { email: profile.email }],
       });
-      if (!existedUser) {
-        this.logger.warn(`Zoho user not registered: ${profile.email}`);
-        throw new UnauthorizedException('User not registered');
+
+      if (!user) throw new UnauthorizedException('User not registered');
+
+      if (user.status !== UserStatus.ACTIVE)
+        throw new UnauthorizedException('User not active');
+
+      if (!user.zohoId) {
+        user.zohoId = profile.zohoId;
+        await this.userRepositoy.save(user);
       }
-      user = existedUser;
     }
 
     const payload = {
@@ -60,12 +65,45 @@ export class AuthService {
       email: user.email,
       role: user.role,
     };
-    this.logger.log(`Zoho login success: ${user.email}`);
+
     return {
       accessToken: await this.jwtService.signAsync(payload),
       user: this.userService.toResponse(user),
     };
   }
+
+  // async loginZoho(profile: Express.User) {
+  //   const user = await this.userRepositoy.findOne({
+  //     where: [{ zohoId: profile.zohoId }, { email: profile.email }],
+  //   });
+
+  //   if (!user) throw new UnauthorizedException('User not registered');
+
+  //   // 🛡 status gate
+  //   if (user.status !== UserStatus.ACTIVE)
+  //     throw new UnauthorizedException('User not active');
+
+  //   // 🛡 bind zohoId lần đầu
+  //   if (!user.zohoId) {
+  //     // email match protection
+  //     if (profile.email !== user.email)
+  //       throw new UnauthorizedException('Email mismatch');
+
+  //     user.zohoId = profile.zohoId;
+  //     await this.userRepositoy.save(user);
+  //   }
+
+  //   const payload = {
+  //     sub: user.id,
+  //     email: user.email,
+  //     role: user.role,
+  //   };
+
+  //   return {
+  //     accessToken: await this.jwtService.signAsync(payload),
+  //     user: this.userService.toResponse(user),
+  //   };
+  // }
 
   async devLogin(dto: LoginDevDto) {
     if (process.env.NODE_ENV === 'production') {

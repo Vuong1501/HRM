@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import { ConfigService } from '@nestjs/config';
@@ -15,9 +19,11 @@ interface ZohoUserInfo {
   ZUID: string;
   First_Name: string;
   Last_Name: string;
+  Display_Name: string;
 }
 @Injectable()
 export class ZohoStrategy extends PassportStrategy(Strategy, ZOHO_STRATEGY) {
+  private readonly logger = new Logger(ZohoStrategy.name);
   constructor(config: ConfigService) {
     const clientId = config.get<string>('ZOHO_CLIENT_ID');
     const clientSecret = config.get<string>('ZOHO_CLIENT_SECRET');
@@ -38,16 +44,27 @@ export class ZohoStrategy extends PassportStrategy(Strategy, ZOHO_STRATEGY) {
   async validate(accessToken: any) {
     const res = await axios.get<ZohoUserInfo>(ZOHO_USER_INFO_URL, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Zoho-oauthtoken ${accessToken}`,
       },
     });
 
-    const { Email, ZUID, First_Name, Last_Name } = res.data;
+    const { Email, ZUID, First_Name, Last_Name, Display_Name } = res.data;
+
+    // 👉 LOG NGƯỜI ĐƯỢC MỜI
+    this.logger.log(
+      `Zoho login success:
+     Email=${Email},
+     ZUID=${ZUID},
+     First_Name=${First_Name},
+     Last_Name=${Last_Name},
+     Display_Name=${Display_Name}`,
+    );
 
     return {
       email: Email,
       zohoId: String(ZUID),
       name: `${First_Name} ${Last_Name}`,
+      Display_Name,
     };
   }
 }

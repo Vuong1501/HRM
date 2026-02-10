@@ -9,5 +9,12 @@ declare global {
       name: string;
       role: string;
     }
+
+    interface Request {
+      cookies: {
+        invite_token?: string;
+        [key: string]: string | undefined;
+      };
+    }
   }
 }
