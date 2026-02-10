@@ -5,7 +5,6 @@ import { Repository } from 'typeorm';
 import { InviteDto } from './dto/invite.dto';
 import { randomUUID } from 'crypto';
 import { MailService } from '../mail/mail.service';
-import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 
 @Injectable()
@@ -25,9 +24,16 @@ export class HrService {
     const entity = this.userRepository.create({
       email: userDto.email,
       name: userDto.name,
-      role: UserRole.EMPLOYEE,
+      role: userDto.role,
       status: UserStatus.INVITED,
       inviteToken: token,
+
+      dateOfBirth: new Date(userDto.dateOfBirth),
+      departmentName: userDto.departmentName,
+      address: userDto.address,
+      sex: userDto.sex,
+      phoneNumber: userDto.phoneNumber,
+      startDate: new Date(userDto.startDate),
     });
     const user = await this.userRepository.save(entity);
 

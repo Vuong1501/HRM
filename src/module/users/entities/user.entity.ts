@@ -6,6 +6,7 @@ import {
 } from 'typeorm';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import { SexEnum } from 'src/common/enums/user-sex.enum';
 
 @Entity('users')
 export class User {
@@ -32,9 +33,33 @@ export class User {
   })
   status: UserStatus;
 
+  @Column({ type: 'date', nullable: true })
+  dateOfBirth: Date;
+
+  @Column({ nullable: true })
+  departmentName: string;
+
+  @Column({ nullable: true })
+  address: string;
+
+  @Column({
+    type: 'enum',
+    enum: SexEnum,
+    nullable: true,
+  })
+  sex: SexEnum;
+
+  @Column({ nullable: true })
+  phoneNumber: string;
+
+  @Column({ type: 'date', nullable: true })
+  startDate: Date;
+
+  // zoho
   @Column({ nullable: true })
   zohoId: string;
 
+  // invite
   @Column({ type: 'varchar', nullable: true })
   inviteToken: string | null;
 
