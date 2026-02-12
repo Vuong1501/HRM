@@ -14,6 +14,10 @@ async function bootstrap() {
       ? ['log', 'error', 'warn']
       : ['log', 'error', 'warn', 'debug', 'verbose'],
   });
+  app.enableCors({
+    origin: 'http://localhost:5173',
+    credentials: true,
+  });
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

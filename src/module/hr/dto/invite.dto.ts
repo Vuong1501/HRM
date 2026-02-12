@@ -8,6 +8,7 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { SexEnum } from 'src/common/enums/user-sex.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 
 export class InviteDto {
   @ApiProperty({
@@ -32,9 +33,15 @@ export class InviteDto {
   @IsNotEmpty()
   departmentName: string;
 
+  // quyền hệ thống
   @ApiProperty({ enum: UserRole, example: UserRole.EMPLOYEE })
   @IsEnum(UserRole)
   role: UserRole;
+
+  // loại nhân sự
+  @ApiProperty({ enum: EmploymentType, example: EmploymentType.OFFICIAL })
+  @IsEnum(EmploymentType)
+  employmentType: EmploymentType;
 
   @ApiProperty({ example: 'Ha Noi' })
   @IsNotEmpty()

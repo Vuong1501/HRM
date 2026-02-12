@@ -123,4 +123,14 @@ khi bị ... ở chỗ import thì khi cài thêm các thư viên type/.... thì
 - xem xem có cần kiểm tra đó là mail zoho không
 - cty có zoho riêng, quản lí trên zoho, nên xem có cách nào quản lí zoho thì sẽ tự động quản lí các user đó ở hệ thống của mình không
 
-
+Excel (bẩn, người dùng nhập)
+↓
+Map header bằng dictionary
+↓
+Raw object trung gian
+↓
+Normalize (date, role, enum, string)
+↓
+Validate DTO
+↓
+Service xử lý
