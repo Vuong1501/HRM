@@ -120,6 +120,7 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
     const payload = {
+      email: user.email,
       sub: user.id,
       role: user.role,
     };

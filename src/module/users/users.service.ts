@@ -44,4 +44,20 @@ export class UsersService {
     }
     return this.toResponse(user);
   }
+
+  async findOne(id: number) {
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user) {
+      throw new Error('User not found');
+    }
+    return this.toResponse(user);
+  }
+
+  async findOneEntity(id: number) {
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user) {
+      throw new Error('User not found');
+    }
+    return user;
+  }
 }

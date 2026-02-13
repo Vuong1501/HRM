@@ -9,6 +9,7 @@ import { ConfigModule } from '@nestjs/config';
 import { HrModule } from './module/hr/hr.module';
 import { MailModule } from './module/mail/mail.module';
 import { InviteModule } from './module/invite/invite.module';
+import { CaslModule } from './module/casl/casl.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { InviteModule } from './module/invite/invite.module';
     HrModule,
     MailModule,
     InviteModule,
+    CaslModule,
   ],
   controllers: [AppController],
   providers: [AppService],
