@@ -109,18 +109,16 @@ export class LeaveService {
           const isEndDay = date.getTime() === dEnd.getTime();
           
           if (isStartDay && isEndDay) {
-            if (sHalf === HalfDayType.FULL || eHalf === HalfDayType.FULL) return [1, 2]; // Full hoặc có ít nhất 1 đầu là full
             if (sHalf === HalfDayType.MORNING && eHalf === HalfDayType.MORNING) return [1];
             if (sHalf === HalfDayType.AFTERNOON && eHalf === HalfDayType.AFTERNOON) return [2];
+            if (sHalf === HalfDayType.MORNING || eHalf === HalfDayType.AFTERNOON) return [1, 2];
             return [1, 2]; // MORNING -> AFTERNOON
           }
           if (isStartDay) {
-            if (sHalf === HalfDayType.FULL) return [1, 2];
             if (sHalf === HalfDayType.MORNING) return [1, 2];
             if (sHalf === HalfDayType.AFTERNOON) return [2];
           }
           if (isEndDay) {
-            if (eHalf === HalfDayType.FULL) return [1, 2];
             if (eHalf === HalfDayType.MORNING) return [1];
             if (eHalf === HalfDayType.AFTERNOON) return [1, 2];
           }
