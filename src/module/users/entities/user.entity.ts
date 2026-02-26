@@ -6,7 +6,11 @@ import {
 } from 'typeorm';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { SexEnum } from 'src/common/enums/user-sex.enum';
+import { OneToMany } from 'typeorm';
+import { LeaveRequest } from '../../leave/entities/leave-request.entity';
+import { LeaveBalance } from '../../leave/entities/leave-balance.entity';
 
 @Entity('users')
 export class User {
@@ -55,6 +59,18 @@ export class User {
   @Column({ type: 'date', nullable: true })
   startDate: Date;
 
+  // Loại hợp đồng: thử việc / chính thức / intern
+  @Column({
+    type: 'enum',
+    enum: EmploymentType,
+    nullable: true,
+  })
+  employmentType: EmploymentType;
+
+  // Ngày lên chính thức (chỉ có khi đã là OFFICIAL)
+  @Column({ type: 'date', nullable: true })
+  officialDate: Date;
+
   // zoho
   @Column({ nullable: true })
   zohoId: string;
@@ -65,4 +81,14 @@ export class User {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  // các mối quan hệ
+  @OneToMany(() => LeaveRequest, request => request.user)
+  leaveRequests: LeaveRequest[];
+
+  @OneToMany(() => LeaveRequest, request => request.approver)
+  approvedLeaveRequests: LeaveRequest[];
+
+  @OneToMany(() => LeaveBalance, balance => balance.user)
+  leaveBalances: LeaveBalance[];
 }

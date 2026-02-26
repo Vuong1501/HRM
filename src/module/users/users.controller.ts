@@ -44,17 +44,18 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies((ability) => ability.can(Action.Read, User))
   @Get(':id')
-  @ApiOperation({ summary: '[CASL Demo] Xem user theo ID - Kiểm tra quyền ABAC' })
+  @ApiOperation({
+    summary: '[CASL Demo] Xem user theo ID - Kiểm tra quyền ABAC',
+  })
   @ApiBearerAuth()
   async findOne(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: RequestWithUser,
   ) {
     const userToRead = await this.usersService.findOneEntity(id);
-    
     // Sử dụng userEntity đã được PoliciesGuard fetch sẵn
     if (!req.userEntity) {
-        throw new UnauthorizedException();
+      throw new UnauthorizedException();
     }
     const ability = this.caslAbilityFactory.createForUser(req.userEntity);
 

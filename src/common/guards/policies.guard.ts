@@ -41,13 +41,12 @@ export class PoliciesGuard implements CanActivate {
     const user = await this.userRepository.findOneBy({
       id: userFromToken.userId,
     });
-    console.log("user", user);
     
     if (!user) return false;
     req.userEntity = user;
 
     const ability = this.caslAbilityFactory.createForUser(user);
-    console.log("ability", ability);
+    // console.log("ability", ability);
     // (ability) => ability.can(Action.Read, User)
 
     return policyHandlers.every((handler) =>

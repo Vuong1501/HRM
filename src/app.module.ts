@@ -10,19 +10,24 @@ import { HrModule } from './module/hr/hr.module';
 import { MailModule } from './module/mail/mail.module';
 import { InviteModule } from './module/invite/invite.module';
 import { CaslModule } from './module/casl/casl.module';
+import { LeaveModule } from './module/leave/leave.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot(typeOrmConfig),
+    ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
     HrModule,
     MailModule,
     InviteModule,
     CaslModule,
+    LeaveModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
+

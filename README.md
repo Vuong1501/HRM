@@ -134,3 +134,12 @@ Normalize (date, role, enum, string)
 Validate DTO
 ↓
 Service xử lý
+
+
+- CASL
+tức là ở controller sẽ tạo lại ability, nó sẽ phải truyền vào dạng ability.can(Read, userInstance), tức là ở factory đã có id của user đó rồi, và nó sẽ tự so sánh với userIntance(chỗ này có id của user) xem có trùng không, nếu trùng thì cho phép, không thì không cho phép
+
+
+triển khai luồng invite như nào
+triển khai oauth như nào
+triển khai .... như nào
