@@ -10,9 +10,10 @@ import { LeaveAccrualService } from './leave-accrual.service';
 import { LeaveSeedService } from './leave-seed.service';
 
 import { LeaveConfig } from './entities/leave-config.entity';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LeaveRequest, LeaveBalance, User, LeaveConfig]), CaslModule],
+  imports: [TypeOrmModule.forFeature([LeaveRequest, LeaveBalance, User, LeaveConfig]), CaslModule, MailModule],
   controllers: [LeaveController],
   providers: [LeaveService, LeaveAccrualService, LeaveSeedService],
   exports: [LeaveService, LeaveAccrualService],

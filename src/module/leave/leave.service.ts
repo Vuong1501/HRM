@@ -19,7 +19,7 @@ import { HalfDayType } from 'src/common/enums/halfDayType.enum';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { InsuranceSubType, PersonalPaidSubType } from 'src/common/enums/leave-subType.enum';
 import { LeaveAccrualService } from './leave-accrual.service';
-import { config } from 'process';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class LeaveService {
@@ -33,6 +33,7 @@ export class LeaveService {
     @InjectRepository(LeaveConfig)
     private leaveConfigRepo: Repository<LeaveConfig>,
     private leaveAccrualService: LeaveAccrualService,
+    private mailService: MailService,
   ) {}
 
    //Tạo đơn xin nghỉ
@@ -218,6 +219,23 @@ export class LeaveService {
     });
 
     const saved = await this.leaveRequestRepo.save(leaveRequest);
+    // gửi thông báo cho trưởng phòng
+    const lead = await this.userRepo.findOne({
+      where : {
+        departmentName: user.departmentName,
+        role: UserRole.DEPARTMENT_LEAD
+      }
+    })
+    
+    if(lead){
+      await this.mailService.sendLeaveRequestNotification(
+        lead.email,
+        user.name,
+        user.departmentName,
+        startDate,
+        endDate,
+      );
+    }
 
     // if (saved.missingCompHours > 0) {
 

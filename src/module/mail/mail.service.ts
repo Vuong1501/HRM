@@ -34,4 +34,55 @@ export class MailService {
       `,
     });
   }
+
+  async sendLeaveRequestNotification(
+    to: string, 
+    employeeName: string,
+    departmentName: string,
+    startDate: Date,
+    endDate: Date,
+    ): Promise<void> {
+      const formatDate = (date: Date) => {
+        return date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+      };
+
+      await this.transporter.sendMail({
+        from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
+        to: to,
+        subject: 'Leave Request Notification',
+
+        html: `
+          <h2>Leave Request</h2>
+
+          <p>Hello,</p>
+
+          <p><b>${employeeName}</b> has submitted a leave request.</p>
+
+          <table border="1" cellpadding="5" cellspacing="0">
+            <tr>
+              <td><b>Department</b></td>
+              <td>${departmentName}</td>
+            </tr>
+
+            <tr>
+              <td><b>From</b></td>
+              <td>${formatDate(startDate)}</td>
+            </tr>
+
+            <tr>
+              <td><b>To</b></td>
+              <td>${formatDate(endDate)}</td>
+            </tr>
+          </table>
+
+          <br/>
+
+          <p>Please login to HR System to review and approve.</p>
+      `,
+    });
+  }
 }
