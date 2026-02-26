@@ -41,11 +41,12 @@ export class LeaveService {
     if (!user) throw new NotFoundException('Không tìm thấy nhân viên');
 
     if (
-      dto.leaveType === LeaveType.PAID &&
+      (dto.leaveType === LeaveType.PAID || dto.leaveType === LeaveType.INSURANCE) &&
       user.employmentType !== EmploymentType.OFFICIAL
     ) {
       throw new ForbiddenException(
-        'Bạn chưa lên chính thức nên chưa được sử dụng phép năm. Phép của bạn đang được tích lũy và sẽ được dùng khi lên chính thức.',
+        `Bạn chưa lên chính thức nên chưa được sử dụng phép năm hoặc nghỉ bảo hiểm
+        . Phép năm của bạn đang được tích lũy và sẽ được dùng khi lên chính thức.`,
       );
     }
 
@@ -80,7 +81,7 @@ export class LeaveService {
       }
     }
 
-    // Lấy tất cả đơn đã duyệt của nhân viên để kiểm tra trùng
+    // Lấy tất cả đơn của nhân viên để kiểm tra trùng
     const existingRequests = await this.leaveRequestRepo.find({
       where: {
         userId,
