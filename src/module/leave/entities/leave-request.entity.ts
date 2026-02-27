@@ -6,11 +6,13 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { LeaveType } from 'src/common/enums/leave-type.enum';
 import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { HalfDayType } from 'src/common/enums/halfDayType.enum';
+import { LeaveAttachment } from './leave_attachments';
 
 @Entity('leave_requests')
 export class LeaveRequest {
@@ -82,6 +84,9 @@ export class LeaveRequest {
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'approverId' })
   approver: User | null;
+
+  @OneToMany(() => LeaveAttachment, (att) => att.leaveRequest)
+  attachments: LeaveAttachment[];
 
   // Thời điểm duyệt
   @Column({ type: 'timestamp', nullable: true })

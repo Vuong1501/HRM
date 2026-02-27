@@ -20,243 +20,295 @@ import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { InsuranceSubType, PersonalPaidSubType } from 'src/common/enums/leave-subType.enum';
 import { LeaveAccrualService } from './leave-accrual.service';
 import { MailService } from '../mail/mail.service';
+import { DataSource, QueryRunner } from 'typeorm';
+import { LeaveAttachment } from './entities/leave_attachments';
+import { unlink } from 'fs/promises';
 
 @Injectable()
 export class LeaveService {
   constructor(
     @InjectRepository(LeaveRequest)
     private leaveRequestRepo: Repository<LeaveRequest>,
+
     @InjectRepository(LeaveBalance)
     private leaveBalanceRepo: Repository<LeaveBalance>,
+
     @InjectRepository(User)
     private userRepo: Repository<User>,
+
     @InjectRepository(LeaveConfig)
     private leaveConfigRepo: Repository<LeaveConfig>,
+
+    @InjectRepository(LeaveAttachment)
+    private leaveAttachmentRepo: Repository<LeaveAttachment>,
+    
     private leaveAccrualService: LeaveAccrualService,
     private mailService: MailService,
+    private dataSource: DataSource,
   ) {}
 
    //Tạo đơn xin nghỉ
-  async createLeaveRequest(userId: number, dto: CreateLeaveRequestDto) {
-    const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) throw new NotFoundException('Không tìm thấy nhân viên');
-
-    if (
-      (dto.leaveType === LeaveType.PAID || dto.leaveType === LeaveType.INSURANCE) &&
-      user.employmentType !== EmploymentType.OFFICIAL
-    ) {
-      throw new ForbiddenException(
-        `Bạn chưa lên chính thức nên chưa được sử dụng phép năm hoặc nghỉ bảo hiểm
-        . Phép năm của bạn đang được tích lũy và sẽ được dùng khi lên chính thức.`,
-      );
-    }
-
-    const startDate = new Date(dto.startDate);
-    const endDate = new Date(dto.endDate);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (startDate > endDate) {
-      throw new BadRequestException('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
-    }
-
-    if (startDate.getTime() === endDate.getTime()) {
-      if (dto.startHalfDayType === HalfDayType.AFTERNOON && dto.endHalfDayType === HalfDayType.MORNING) {
-        throw new BadRequestException('Buổi bắt đầu không thể sau buổi kết thúc trong cùng một ngày');
+  async createLeaveRequest(userId: number, dto: CreateLeaveRequestDto, files: Express.Multer.File[]) {
+    //tạo transaction
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      // nghỉ bảo hiểm bắt buộc có file đính kèm
+      if (dto.leaveType === LeaveType.INSURANCE) {
+        if (!files || files.length === 0) {
+          throw new BadRequestException(
+            'Nghỉ bảo hiểm bắt buộc phải đính kèm hồ sơ',
+          );
+        }
       }
-    }
+      const user = await queryRunner.manager.findOneBy(User, { id: userId });
+      if (!user) throw new NotFoundException('Không tìm thấy nhân viên');
 
-    if (startDate < today) {
-      // Cho phép ngày trong quá khứ nếu cùng tháng hiện tại
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
-
-      const startMonth = startDate.getMonth();
-      const startYear = startDate.getFullYear();
-
-      if (startMonth !== currentMonth || startYear !== currentYear) {
-        throw new BadRequestException(
-          'Chỉ được phép điền ngày nghỉ trong quá khứ trong tháng hiện tại',
+      if (
+        (dto.leaveType === LeaveType.PAID || dto.leaveType === LeaveType.INSURANCE) &&
+        user.employmentType !== EmploymentType.OFFICIAL
+      ) {
+        throw new ForbiddenException(
+          `Bạn chưa lên chính thức nên chưa được sử dụng phép năm hoặc nghỉ bảo hiểm
+          . Phép năm của bạn đang được tích lũy và sẽ được dùng khi lên chính thức.`,
         );
       }
-    }
 
-    // Lấy tất cả đơn của nhân viên để kiểm tra trùng
-    const existingRequests = await this.leaveRequestRepo.find({
-      where: {
-        userId,
-        status: In([LeaveRequestStatus.APPROVED, LeaveRequestStatus.PENDING]),
-      },
-    });
-    
-    for (const req of existingRequests) {
-      const reqStart = new Date(req.startDate);
-      const reqEnd = new Date(req.endDate);
+      const startDate = new Date(dto.startDate);
+      const endDate = new Date(dto.endDate);
 
-      reqStart.setHours(0,0,0,0);
-      reqEnd.setHours(0,0,0,0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const newStart = new Date(startDate);
-      const newEnd = new Date(endDate);
+      if (startDate > endDate) {
+        throw new BadRequestException('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
+      }
 
-      newStart.setHours(0,0,0,0);
-      newEnd.setHours(0,0,0,0);
+      if (startDate.getTime() === endDate.getTime()) {
+        if (dto.startHalfDayType === HalfDayType.AFTERNOON && dto.endHalfDayType === HalfDayType.MORNING) {
+          throw new BadRequestException('Buổi bắt đầu không thể sau buổi kết thúc trong cùng một ngày');
+        }
+      }
 
-      // Giao nhau về ngày
-      if (newStart <= reqEnd && newEnd >= reqStart) {
-        //lấy các buổi nghỉ trong một ngày cụ thể
-        const getSlots = (date: Date, dStart: Date, dEnd: Date, sHalf: HalfDayType, eHalf: HalfDayType) => {
-          const isStartDay = date.getTime() === dStart.getTime();
-          const isEndDay = date.getTime() === dEnd.getTime();
-          
-          if (isStartDay && isEndDay) {
-            if (sHalf === HalfDayType.MORNING && eHalf === HalfDayType.MORNING) return [1];
-            if (sHalf === HalfDayType.AFTERNOON && eHalf === HalfDayType.AFTERNOON) return [2];
-            if (sHalf === HalfDayType.MORNING || eHalf === HalfDayType.AFTERNOON) return [1, 2];
-            return [1, 2]; // MORNING -> AFTERNOON
-          }
-          if (isStartDay) {
-            if (sHalf === HalfDayType.MORNING) return [1, 2];
-            if (sHalf === HalfDayType.AFTERNOON) return [2];
-          }
-          if (isEndDay) {
-            if (eHalf === HalfDayType.MORNING) return [1];
-            if (eHalf === HalfDayType.AFTERNOON) return [1, 2];
-          }
-          return [1, 2]; // Ngày nằm giữa khoảng nghỉ
-        };
+      if (startDate < today) {
+        // Cho phép ngày trong quá khứ nếu cùng tháng hiện tại
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
 
-        // Tìm các ngày giao nhau và kiểm tra xem có buổi nào bị trùng không
-        const overlapStart = new Date(Math.max(newStart.getTime(), reqStart.getTime()));
-        const overlapEnd = new Date(Math.min(newEnd.getTime(), reqEnd.getTime()));
+        const startMonth = startDate.getMonth();
+        const startYear = startDate.getFullYear();
 
-        for (let d = new Date(overlapStart); d <= overlapEnd; d.setDate(d.getDate() + 1)) {
-          const newSlots = getSlots(d, newStart, newEnd, dto.startHalfDayType, dto.endHalfDayType);
-          const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
-          
-          if (newSlots.some(s => oldSlots.includes(s))) {
-            throw new BadRequestException(
-              `Trùng lịch nghỉ với đơn đã được duyệt (${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType})`,
-            );
+        if (startMonth !== currentMonth || startYear !== currentYear) {
+          throw new BadRequestException(
+            'Chỉ được phép điền ngày nghỉ trong quá khứ trong tháng hiện tại',
+          );
+        }
+      }
+
+      // Lấy tất cả đơn của nhân viên để kiểm tra trùng
+      const existingRequests = await this.leaveRequestRepo.find({
+        where: {
+          userId,
+          status: In([LeaveRequestStatus.APPROVED, LeaveRequestStatus.PENDING]),
+        },
+      });
+      
+      for (const req of existingRequests) {
+        const reqStart = new Date(req.startDate);
+        const reqEnd = new Date(req.endDate);
+
+        reqStart.setHours(0,0,0,0);
+        reqEnd.setHours(0,0,0,0);
+
+        const newStart = new Date(startDate);
+        const newEnd = new Date(endDate);
+
+        newStart.setHours(0,0,0,0);
+        newEnd.setHours(0,0,0,0);
+
+        // Giao nhau về ngày
+        if (newStart <= reqEnd && newEnd >= reqStart) {
+          //lấy các buổi nghỉ trong một ngày cụ thể
+          const getSlots = (date: Date, dStart: Date, dEnd: Date, sHalf: HalfDayType, eHalf: HalfDayType) => {
+            const isStartDay = date.getTime() === dStart.getTime();
+            const isEndDay = date.getTime() === dEnd.getTime();
+            
+            if (isStartDay && isEndDay) {
+              if (sHalf === HalfDayType.MORNING && eHalf === HalfDayType.MORNING) return [1];
+              if (sHalf === HalfDayType.AFTERNOON && eHalf === HalfDayType.AFTERNOON) return [2];
+              if (sHalf === HalfDayType.MORNING || eHalf === HalfDayType.AFTERNOON) return [1, 2];
+              return [1, 2]; // MORNING -> AFTERNOON
+            }
+            if (isStartDay) {
+              if (sHalf === HalfDayType.MORNING) return [1, 2];
+              if (sHalf === HalfDayType.AFTERNOON) return [2];
+            }
+            if (isEndDay) {
+              if (eHalf === HalfDayType.MORNING) return [1];
+              if (eHalf === HalfDayType.AFTERNOON) return [1, 2];
+            }
+            return [1, 2]; // Ngày nằm giữa khoảng nghỉ
+          };
+
+          // Tìm các ngày giao nhau và kiểm tra xem có buổi nào bị trùng không
+          const overlapStart = new Date(Math.max(newStart.getTime(), reqStart.getTime()));
+          const overlapEnd = new Date(Math.min(newEnd.getTime(), reqEnd.getTime()));
+
+          for (let d = new Date(overlapStart); d <= overlapEnd; d.setDate(d.getDate() + 1)) {
+            const newSlots = getSlots(d, newStart, newEnd, dto.startHalfDayType, dto.endHalfDayType);
+            const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
+            
+            if (newSlots.some(s => oldSlots.includes(s))) {
+              throw new BadRequestException(
+                `Trùng lịch nghỉ với đơn đã được duyệt (${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType})`,
+              );
+            }
           }
         }
       }
-    }
 
-    // Tính số ngày nghỉ
-    const leaveDays = this.calculateLeaveDays(startDate, endDate, dto.startHalfDayType, dto.endHalfDayType);
-    const currentYear = today.getFullYear();
+      // Tính số ngày nghỉ
+      const leaveDays = this.calculateLeaveDays(startDate, endDate, dto.startHalfDayType, dto.endHalfDayType);
+      const currentYear = today.getFullYear();
 
-    // Lấy hoặc tạo quỹ nghỉ
-    let balance = await this.getOrCreateBalance(userId, currentYear);
+      // Lấy hoặc tạo quỹ nghỉ
+      let balance = await this.getOrCreateBalance(userId, currentYear);
 
-    // Validate theo loại nghỉ
-    let compensatoryInfo: { balance: number; warning?: string} | undefined;
+      // Validate theo loại nghỉ
+      let compensatoryInfo: { balance: number; warning?: string} | undefined;
 
-    let paidDeduction = 0; // chỗ này là trừ đi phép năm nếu có
-    let unpaidDeduction = 0; // chỗ này là trừ đi không lương nếu có
+      let paidDeduction = 0; // chỗ này là trừ đi phép năm nếu có
+      let unpaidDeduction = 0; // chỗ này là trừ đi không lương nếu có
 
-    if (dto.leaveType === LeaveType.PERSONAL_PAID || dto.leaveType === LeaveType.INSURANCE) {
-      if (!dto.leaveSubType) {
-        throw new BadRequestException('leaveSubType là bắt buộc');
-      }
-      const config = await this.getSubTypeLimit(dto.leaveType, dto.leaveSubType)
-      if (!config) {
-        throw new BadRequestException('Không tìm thấy loại nghỉ');
-      }
-      const limit = Number(config.limit);
+      if (dto.leaveType === LeaveType.PERSONAL_PAID || dto.leaveType === LeaveType.INSURANCE) {
+        if (!dto.leaveSubType) {
+          throw new BadRequestException('leaveSubType là bắt buộc');
+        }
+        const config = await this.getSubTypeLimit(dto.leaveType, dto.leaveSubType)
+        if (!config) {
+          throw new BadRequestException('Không tìm thấy loại nghỉ');
+        }
+        const limit = Number(config.limit);
 
-      const usedDays = await this.getUsedDaysForSubType(
-        userId, 
-        dto.leaveSubType, 
-        startDate.getFullYear(),
-        config.isPerMonth ? startDate.getMonth() : undefined
-      );
-      const remaining = limit - usedDays;
-      if (leaveDays > remaining) {
-        throw new BadRequestException(
-          `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${dto.leaveSubType}. 
-          Không được vượt quá hạn mức.`
+        const usedDays = await this.getUsedDaysForSubType(
+          userId, 
+          dto.leaveSubType, 
+          startDate.getFullYear(),
+          config.isPerMonth ? startDate.getMonth() : undefined
         );
-      }
-    } else if (dto.leaveType === LeaveType.PAID) {
-      const annualRemaining = Number(balance.annualLeaveTotal) - Number(balance.annualLeaveUsed);
-      if (annualRemaining < leaveDays) {
+        const remaining = limit - usedDays;
+        if (leaveDays > remaining) {
           throw new BadRequestException(
-          `Bạn chỉ còn ${annualRemaining} ngày phép năm. 
-          Không đủ cho ${leaveDays} ngày.
-          Vui lòng tạo đơn nghỉ không lương`
-        );
-      } else {
-         paidDeduction = leaveDays;
+            `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${dto.leaveSubType}. 
+            Không được vượt quá hạn mức.`
+          );
+        }
+      } else if (dto.leaveType === LeaveType.PAID) {
+        const annualRemaining = Number(balance.annualLeaveTotal) - Number(balance.annualLeaveUsed);
+        if (annualRemaining < leaveDays) {
+            throw new BadRequestException(
+            `Bạn chỉ còn ${annualRemaining} ngày phép năm. 
+            Không đủ cho ${leaveDays} ngày.
+            Vui lòng tạo đơn nghỉ không lương`
+          );
+        } else {
+          paidDeduction = leaveDays;
+        }
+      } else if (dto.leaveType === LeaveType.UNPAID) {
+        unpaidDeduction = leaveDays;
+      } else if (dto.leaveType === LeaveType.COMPENSATORY) {
+        const compBalance = Number(balance.compensatoryBalance);
+        compensatoryInfo = { balance: compBalance };
+        const requiredHours = leaveDays * 8;
+        if(requiredHours > compBalance){
+          throw new BadRequestException(
+            `Bạn chỉ còn ${compBalance} giờ nghỉ bù, không đủ cho ${requiredHours} giờ yêu cầu`,
+          );
+        }
       }
-    } else if (dto.leaveType === LeaveType.UNPAID) {
-      unpaidDeduction = leaveDays;
-    } else if (dto.leaveType === LeaveType.COMPENSATORY) {
-      const compBalance = Number(balance.compensatoryBalance);
-      compensatoryInfo = { balance: compBalance };
-      const requiredHours = leaveDays * 8;
-      if(requiredHours > compBalance){
-        throw new BadRequestException(
-          `Bạn chỉ còn ${compBalance} giờ nghỉ bù, không đủ cho ${requiredHours} giờ yêu cầu`,
-        );
-      }
-    }
 
-    // Tạo đơn nghỉ
-    await this.validateLeaveSubType(dto.leaveType, dto.leaveSubType);
-    const leaveRequest = this.leaveRequestRepo.create({
-      userId,
-      leaveType: dto.leaveType,
-      leaveSubType: dto.leaveSubType || null,
-      startDate,
-      endDate,
-      startHalfDayType: dto.startHalfDayType,
-      endHalfDayType: dto.endHalfDayType,
-      reason: dto.reason,
-      status: LeaveRequestStatus.PENDING
-    });
-
-    const saved = await this.leaveRequestRepo.save(leaveRequest);
-    // gửi thông báo cho trưởng phòng
-    const lead = await this.userRepo.findOne({
-      where : {
-        departmentName: user.departmentName,
-        role: UserRole.DEPARTMENT_LEAD
-      }
-    })
-    
-    if(lead){
-      await this.mailService.sendLeaveRequestNotification(
-        lead.email,
-        user.name,
-        user.departmentName,
+      // Tạo đơn nghỉ
+      await this.validateLeaveSubType(dto.leaveType, dto.leaveSubType);
+      const leaveRequest = queryRunner.manager.create(LeaveRequest, {
+        userId,
+        leaveType: dto.leaveType,
+        leaveSubType: dto.leaveSubType || null,
         startDate,
         endDate,
+        startHalfDayType: dto.startHalfDayType,
+        endHalfDayType: dto.endHalfDayType,
+        reason: dto.reason,
+        status: LeaveRequestStatus.PENDING
+      });
+      const savedLeave = await queryRunner.manager.save(leaveRequest);
+
+      console.log('savedLeave', savedLeave);
+      console.log('files', files);
+
+      // lưu file nếu có file
+      if (files && files.length > 0) {
+        const attachments = files.map((file) =>
+          queryRunner.manager.create(LeaveAttachment, {
+            leaveRequestId: savedLeave.id,
+            originalName: file.originalname,
+            fileName: file.filename,
+            filePath: file.path,
+            size: file.size,
+            mimeType: file.mimetype,
+          }),
+        );
+        await queryRunner.manager.save(attachments);
+      }
+      await queryRunner.commitTransaction();
+
+      // commit xong mới gửi mail
+      try {
+        const lead = await this.userRepo.findOne({
+        where : {
+          departmentName: user.departmentName,
+          role: UserRole.DEPARTMENT_LEAD
+        }
+      })
+    
+      if(lead){
+        await this.mailService.sendLeaveRequestNotification(
+          lead.email,
+          user.name,
+          user.departmentName,
+          startDate,
+          endDate,
+        );
+      }
+      } catch (mailError) {
+        console.error('Send mail failed:', mailError);
+      }
+      return {
+        message: 'Tạo đơn xin nghỉ thành công',
+        data: savedLeave,
+        leaveDays,
+        breakdown: {
+          inQuota: (dto.leaveType === LeaveType.PERSONAL_PAID || dto.leaveType === LeaveType.INSURANCE) ? leaveDays : 0,
+          paidDeduction,
+          unpaidDeduction,
+        },
+      };
+    } catch (error) {
+      console.error('Create leave request failed:', error);
+      // rollbakc db
+      await queryRunner.rollbackTransaction();
+
+      //xóa file nếu có
+      if (files && files.length > 0) {
+      await Promise.all(
+        files.map((file) =>
+          unlink(file.path).catch(() => {}),
+        ),
       );
     }
 
-    // if (saved.missingCompHours > 0) {
-
-    //   await this.otService.createCompensateOT({
-    //     userId,
-    //     hours: saved.missingCompHours,
-    //     leaveRequestId: saved.id,
-    //   });
-
-    // }
-
-    return {
-      message: 'Tạo đơn xin nghỉ thành công',
-      data: saved,
-      leaveDays,
-      breakdown: {
-        inQuota: (dto.leaveType === LeaveType.PERSONAL_PAID || dto.leaveType === LeaveType.INSURANCE) ? leaveDays : 0,
-        paidDeduction,
-        unpaidDeduction,
-      },
-    };
+    throw error;
+    }
   }
 
   /**
