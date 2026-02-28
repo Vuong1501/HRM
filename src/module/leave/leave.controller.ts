@@ -78,13 +78,11 @@ export class LeaveController {
     return this.leaveService.createLeaveRequest(req.user.userId, dto, files);
   }
 
-  /**
-   * Xem danh sách đơn nghỉ của mình
-   * GET /leave/my-requests
-   */
   @Get('my-requests')
-  getMyRequests(@Req() req: RequestWithUser) {
-    return this.leaveService.getMyLeaveRequests(req.user.userId);
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getListMyLeaveRequests(@Req() req: RequestWithUser) {
+    return this.leaveService.getListMyLeaveRequests(req.user.userId);
   }
 
   /**

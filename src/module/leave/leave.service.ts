@@ -311,10 +311,7 @@ export class LeaveService {
     }
   }
 
-  /**
-   * Xem danh sách đơn nghỉ của mình
-   */
-  async getMyLeaveRequests(userId: number) {
+  async getListMyLeaveRequests(userId: number) {
     return this.leaveRequestRepo.find({
       where: { userId },
       order: { createdAt: 'DESC' },
@@ -360,7 +357,7 @@ export class LeaveService {
     }
     // Admin (BOD) thấy tất cả
 
-    // queryBuilder.orderBy('lr.createdAt', 'DESC');
+    queryBuilder.orderBy('lr.createdAt', 'DESC');
 
     const requests = await queryBuilder.getMany();
 
