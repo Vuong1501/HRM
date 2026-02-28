@@ -343,10 +343,7 @@ export class LeaveService {
     };
   }
 
-  /**
-   * Lấy danh sách đơn chờ duyệt (cho Department Lead / Admin)
-   */
-  async getPendingRequests(approverId: number) {
+  async getListRequests(approverId: number) {
     const approver = await this.userRepo.findOneBy({ id: approverId });
     if (!approver) throw new NotFoundException('Không tìm thấy người duyệt');
 
@@ -363,33 +360,33 @@ export class LeaveService {
     }
     // Admin (BOD) thấy tất cả
 
-    queryBuilder.orderBy('lr.createdAt', 'DESC');
+    // queryBuilder.orderBy('lr.createdAt', 'DESC');
 
     const requests = await queryBuilder.getMany();
 
     // Kèm thông tin leave history cho mỗi nhân viên
-    const result = await Promise.all(
-      requests.map(async (req) => {
-        const currentYear = new Date().getFullYear();
-        const balance = await this.leaveBalanceRepo.findOne({
-          where: { userId: req.userId, year: currentYear },
-        });
+    // const result = await Promise.all(
+    //   requests.map(async (req) => {
+    //     const currentYear = new Date().getFullYear();
+    //     const balance = await this.leaveBalanceRepo.findOne({
+    //       where: { userId: req.userId, year: currentYear },
+    //     });
 
-        return {
-          ...req,
-          employeeLeaveInfo: balance
-            ? {
-                annualLeaveUsed: Number(balance.annualLeaveUsed),
-                annualLeaveTotal: Number(balance.annualLeaveTotal),
-                unpaidLeaveUsed: Number(balance.unpaidLeaveUsed),
-                compensatoryBalance: Number(balance.compensatoryBalance),
-              }
-            : null,
-        };
-      }),
-    );
+    //     return {
+    //       ...req,
+    //       employeeLeaveInfo: balance
+    //         ? {
+    //             annualLeaveUsed: Number(balance.annualLeaveUsed),
+    //             annualLeaveTotal: Number(balance.annualLeaveTotal),
+    //             unpaidLeaveUsed: Number(balance.unpaidLeaveUsed),
+    //             compensatoryBalance: Number(balance.compensatoryBalance),
+    //           }
+    //         : null,
+    //     };
+    //   }),
+    // );
 
-    return result;
+    return requests;
   }
 
   /**

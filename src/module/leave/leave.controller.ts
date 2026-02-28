@@ -96,13 +96,11 @@ export class LeaveController {
     return this.leaveService.getMyBalance(req.user.userId);
   }
 
-  /**
-   * Department Lead / Admin: Xem đơn chờ duyệt
-   * GET /leave/pending
-   */
-  @Get('pending')
-  getPendingRequests(@Req() req: RequestWithUser) {
-    return this.leaveService.getPendingRequests(req.user.userId);
+  @Get('list-requests')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getListRequests(@Req() req: RequestWithUser) {
+    return this.leaveService.getListRequests(req.user.userId);
   }
 
   /**

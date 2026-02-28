@@ -30,8 +30,8 @@ export class CaslAbilityFactory {
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User, { departmentName: user.departmentName });
       // Leave: đọc + duyệt đơn của nhân viên cùng phòng ban
-      can(Action.Read, LeaveRequest);
-      can(Action.Approve, LeaveRequest);
+      can(Action.Read, LeaveRequest, {user: {departmentName: user.departmentName}});
+      can(Action.Approve, LeaveRequest, {user: {departmentName: user.departmentName}});
     } else if (user.role === UserRole.EMPLOYEE) {
       can(Action.Read, User, { id: user.id });
       can(Action.Update, User, { id: user.id });
