@@ -75,8 +75,8 @@ export class LeaveService {
       'user.departmentName AS department',
     ])
     .orderBy('lr.createdAt', 'DESC')
-    .skip((page - 1) * limit)
-    .take(limit);
+    .offset((page - 1) * limit)
+    .limit(limit);
 
     const rawData = await dataQb.getRawMany();
 
