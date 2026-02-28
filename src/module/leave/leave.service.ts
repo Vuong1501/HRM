@@ -23,6 +23,8 @@ import { MailService } from '../mail/mail.service';
 import { DataSource, QueryRunner } from 'typeorm';
 import { LeaveAttachment } from './entities/leave_attachments';
 import { unlink } from 'fs/promises';
+import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
+import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 
 @Injectable()
 export class LeaveService {
@@ -41,11 +43,61 @@ export class LeaveService {
 
     @InjectRepository(LeaveAttachment)
     private leaveAttachmentRepo: Repository<LeaveAttachment>,
-    
+
+    private readonly queryBuilder: LeaveRequestQueryBuilder,
     private leaveAccrualService: LeaveAccrualService,
     private mailService: MailService,
     private dataSource: DataSource,
   ) {}
+
+  async getLeaveList(user: User, query: LeaveListQueryDto) {
+    const { page = 1, limit = 10 } = query;
+
+    let qb = this.queryBuilder.buildBaseQuery();
+
+    qb = this.queryBuilder.applyAuthorization(qb, user);
+    qb = this.queryBuilder.applyFilters(qb, query);
+
+    // query đếm tổng trước
+    const total = await qb.getCount();
+
+    //query lấy dữ liệu
+    const dataQb = qb.clone()
+
+    dataQb.select([
+      'lr.id AS id',
+      'lr.leaveType AS leaveType',
+      'lr.status AS status',
+      'lr.startDate AS startDate',
+      'lr.endDate AS endDate',
+      'lr.createdAt AS createdAt',
+      'user.name AS employeeName',
+      'user.departmentName AS department',
+    ])
+    .orderBy('lr.createdAt', 'DESC')
+    .skip((page - 1) * limit)
+    .take(limit);
+
+    const rawData = await dataQb.getRawMany();
+
+    const data = rawData.map((item) => ({
+      id: item.id,
+      leaveType: item.leaveType,
+      status: item.status,
+      startDate: item.startDate,
+      endDate: item.endDate,
+      createdAt: item.createdAt,
+      employeeName: item.employeeName,
+      department: item.department,
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      lastPage: Math.ceil(total / limit),
+    };
+  }
 
    //Tạo đơn xin nghỉ
   async createLeaveRequest(userId: number, dto: CreateLeaveRequestDto, files: Express.Multer.File[]) {
@@ -310,12 +362,9 @@ export class LeaveService {
     throw error;
     }
   }
-
-  async getListMyLeaveRequests(userId: number) {
-    return this.leaveRequestRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-    });
+  // lấy đơn xin nghỉ của mình
+  async getListMyLeaveRequests(user: User, query: LeaveListQueryDto) {
+    return this.getLeaveList(user, query);
   }
 
   /**
@@ -340,50 +389,9 @@ export class LeaveService {
     };
   }
 
-  async getListRequests(approverId: number) {
-    const approver = await this.userRepo.findOneBy({ id: approverId });
-    if (!approver) throw new NotFoundException('Không tìm thấy người duyệt');
-
-    const queryBuilder = this.leaveRequestRepo
-      .createQueryBuilder('lr')
-      .leftJoinAndSelect('lr.user', 'user')
-      .where('lr.status = :status', { status: LeaveRequestStatus.PENDING });
-
-    // Department Lead chỉ thấy đơn của nhân viên cùng phòng ban
-    if (approver.role === UserRole.DEPARTMENT_LEAD) {
-      queryBuilder.andWhere('user.departmentName = :dept', {
-        dept: approver.departmentName,
-      });
-    }
-    // Admin (BOD) thấy tất cả
-
-    queryBuilder.orderBy('lr.createdAt', 'DESC');
-
-    const requests = await queryBuilder.getMany();
-
-    // Kèm thông tin leave history cho mỗi nhân viên
-    // const result = await Promise.all(
-    //   requests.map(async (req) => {
-    //     const currentYear = new Date().getFullYear();
-    //     const balance = await this.leaveBalanceRepo.findOne({
-    //       where: { userId: req.userId, year: currentYear },
-    //     });
-
-    //     return {
-    //       ...req,
-    //       employeeLeaveInfo: balance
-    //         ? {
-    //             annualLeaveUsed: Number(balance.annualLeaveUsed),
-    //             annualLeaveTotal: Number(balance.annualLeaveTotal),
-    //             unpaidLeaveUsed: Number(balance.unpaidLeaveUsed),
-    //             compensatoryBalance: Number(balance.compensatoryBalance),
-    //           }
-    //         : null,
-    //     };
-    //   }),
-    // );
-
-    return requests;
+  // lấy danh sách đơn nghỉ của phòng ban của mình
+  async getListRequests(user: User, query: LeaveListQueryDto) {
+    return this.getLeaveList(user, query);
   }
 
   /**

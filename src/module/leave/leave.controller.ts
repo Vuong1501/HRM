@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { LeaveService } from './leave.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
@@ -24,6 +25,7 @@ import { Action } from 'src/common/enums/action.enum';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -81,8 +83,11 @@ export class LeaveController {
   @Get('my-requests')
   @CheckPolicies((ability) =>
     ability.can(Action.Read, LeaveRequest))
-  getListMyLeaveRequests(@Req() req: RequestWithUser) {
-    return this.leaveService.getListMyLeaveRequests(req.user.userId);
+  getListMyLeaveRequests(
+    @Req() req: RequestWithUser,
+    @Query() query: LeaveListQueryDto
+  ) {
+    return this.leaveService.getListMyLeaveRequests(req.userEntity, query);
   }
 
   /**
@@ -97,8 +102,11 @@ export class LeaveController {
   @Get('list-requests')
   @CheckPolicies((ability) =>
     ability.can(Action.Read, LeaveRequest))
-  getListRequests(@Req() req: RequestWithUser) {
-    return this.leaveService.getListRequests(req.user.userId);
+  getListRequests(
+    @Req() req: RequestWithUser,
+    @Query() query: LeaveListQueryDto
+  ) {
+    return this.leaveService.getListRequests(req.userEntity, query);
   }
 
   /**
