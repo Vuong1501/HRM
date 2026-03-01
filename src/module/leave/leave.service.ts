@@ -550,6 +550,40 @@ export class LeaveService {
     };
   }
 
+  // lấy chi tiết đơn xin nghỉ
+  async leaveRequestDetail(user: User, id: number) {
+    const leave = await this.leaveRequestRepo.findOne({
+      where: { id },
+      relations: ['user', 'approver', 'attachments'],
+    });
+    
+    if (!leave) throw new NotFoundException('Không tìm thấy đơn xin nghỉ');
+
+    // Kiểm tra quyền của người dùng đối với đơn cụ thể này
+    const ability = this.caslAbilityFactory.createForUser(user);
+    ForbiddenError.from(ability).throwUnlessCan(Action.Read, leave);
+
+    const totalDays = this.calculateLeaveDays(
+      new Date(leave.startDate),
+      new Date(leave.endDate),
+      leave.startHalfDayType,
+      leave.endHalfDayType,
+    );
+
+    return {
+      startDate: leave.startDate,
+      endDate: leave.endDate,
+      totalDays,
+      leaveType: leave.leaveType,
+      reason: leave.reason,
+      attachments:
+      leave.attachments?.map((att) => ({
+        id: att.id,
+        originalName: att.originalName,
+        fileName: att.fileName,
+      })) ?? [],
+    };
+  }
 
 
   // Tính số ngày nghỉ (startDate → endDate, inclusive)

@@ -109,7 +109,7 @@ export class LeaveController {
     return this.leaveService.getListRequests(req.userEntity, query);
   }
 
-  // lead_dep. admin duyệt đơn nghỉ
+  // lead_dep, admin duyệt đơn nghỉ
   @Patch(':id/approve')
   @CheckPolicies((ability) =>
     ability.can(Action.Approve, LeaveRequest))
@@ -143,5 +143,16 @@ export class LeaveController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.leaveService.cancelLeaveRequest(req.user.userId, id);
+  }
+
+  // xem chi tiết đơn xin nghỉ
+  @Get('detail-leave/:id')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getLeaveRequest(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number
+  ) {
+    return this.leaveService.leaveRequestDetail(req.userEntity, id);
   }
 }
