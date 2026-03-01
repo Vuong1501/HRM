@@ -12,6 +12,7 @@ import {
   UploadedFiles,
   BadRequestException,
   Query,
+  Res,
 } from '@nestjs/common';
 import { LeaveService } from './leave.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
@@ -26,6 +27,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
+import type  { Response } from 'express';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -154,5 +156,17 @@ export class LeaveController {
     @Param('id', ParseIntPipe) id: number
   ) {
     return this.leaveService.leaveRequestDetail(req.userEntity, id);
+  }
+
+  //xem file đính kèm
+  @Get('attachments/:id')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getLeaveRequestAttachments(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    return this.leaveService.getLeaveRequestAttachments(req.userEntity, id, res);
   }
 }

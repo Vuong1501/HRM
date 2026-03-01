@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, Between, In, EntityManager } from 'typeorm';
+import { Response } from 'express';
 import { LeaveRequest } from './entities/leave-request.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
 import { LeaveConfig } from './entities/leave-config.entity';
@@ -28,6 +29,7 @@ import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { ForbiddenError } from '@casl/ability';
 import { Action } from 'src/common/enums/action.enum';
+import { join } from 'path';
 
 @Injectable()
 export class LeaveService {
@@ -583,6 +585,41 @@ export class LeaveService {
         fileName: att.fileName,
       })) ?? [],
     };
+  }
+
+  // lấy file đính kèm
+  async getLeaveRequestAttachments(user: User, attachmentId: number, res: Response) {
+    const attachment = await this.leaveAttachmentRepo.findOne({
+      where: { id: attachmentId },
+      relations: ['leaveRequest', 'leaveRequest.user'], 
+    });
+
+  if (!attachment) {
+    throw new NotFoundException('Không tìm thấy file');
+  }
+
+    // check quyền dựa trên đơn nghỉ
+    const ability = this.caslAbilityFactory.createForUser(user);
+    ForbiddenError.from(ability).throwUnlessCan(Action.Read, attachment.leaveRequest);
+
+    const filePath = join(
+      process.cwd(),
+      'uploads',
+      'leave',
+      attachment.fileName,
+    );
+
+    //  Set header để xem inline, không tải xuống
+    res.setHeader('Content-Type', attachment.mimeType);
+    const encodedFileName = encodeURIComponent(
+      attachment.originalName,
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodedFileName}"`,
+    );
+
+    return res.sendFile(filePath);
   }
 
 
