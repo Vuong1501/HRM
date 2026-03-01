@@ -16,6 +16,7 @@ import { LeaveAttachment } from './leave_attachments';
 
 @Entity('leave_requests')
 export class LeaveRequest {
+
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -80,6 +81,12 @@ export class LeaveRequest {
   // Người duyệt
   @Column({ nullable: true })
   approverId: number | null;
+
+  @Column({ type: 'decimal', default: 0 })
+  paidLeaveDeduction: number;
+
+  @Column({ type: 'decimal', default: 0 })
+  unpaidLeaveDeduction: number;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'approverId' })

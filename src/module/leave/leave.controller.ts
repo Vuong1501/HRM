@@ -109,17 +109,16 @@ export class LeaveController {
     return this.leaveService.getListRequests(req.userEntity, query);
   }
 
-  /**
-   * Department Lead / Admin: Duyệt đơn
-   * PATCH /leave/:id/approve
-   */
-  // @Patch(':id/approve')
-  // approveRequest(
-  //   @Req() req: RequestWithUser,
-  //   @Param('id', ParseIntPipe) id: number,
-  // ) {
-  //   return this.leaveService.approveLeaveRequest(req.user.userId, id);
-  // }
+  // lead_dep. admin duyệt đơn nghỉ
+  @Patch(':id/approve')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Approve, LeaveRequest))
+  approveRequest(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.leaveService.approveLeaveRequest(req.user.userId, id);
+  }
 
   /**
    * Department Lead / Admin: Từ chối đơn

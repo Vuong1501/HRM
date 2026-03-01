@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, Between, In } from 'typeorm';
+import { Repository, Not, Between, In, EntityManager } from 'typeorm';
 import { LeaveRequest } from './entities/leave-request.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
 import { LeaveConfig } from './entities/leave-config.entity';
@@ -25,6 +25,9 @@ import { LeaveAttachment } from './entities/leave_attachments';
 import { unlink } from 'fs/promises';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
+import { CaslAbilityFactory } from '../casl/casl-ability.factory';
+import { ForbiddenError } from '@casl/ability';
+import { Action } from 'src/common/enums/action.enum';
 
 @Injectable()
 export class LeaveService {
@@ -44,6 +47,7 @@ export class LeaveService {
     @InjectRepository(LeaveAttachment)
     private leaveAttachmentRepo: Repository<LeaveAttachment>,
 
+    private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly queryBuilder: LeaveRequestQueryBuilder,
     private leaveAccrualService: LeaveAccrualService,
     private mailService: MailService,
@@ -99,7 +103,7 @@ export class LeaveService {
     };
   }
 
-   //Tạo đơn xin nghỉ
+  //Tạo đơn xin nghỉ
   async createLeaveRequest(userId: number, dto: CreateLeaveRequestDto, files: Express.Multer.File[]) {
     //tạo transaction
     const queryRunner = this.dataSource.createQueryRunner();
@@ -291,6 +295,8 @@ export class LeaveService {
         startHalfDayType: dto.startHalfDayType,
         endHalfDayType: dto.endHalfDayType,
         reason: dto.reason,
+        paidLeaveDeduction: paidDeduction,
+        unpaidLeaveDeduction: unpaidDeduction,
         status: LeaveRequestStatus.PENDING
       });
       const savedLeave = await queryRunner.manager.save(leaveRequest);
@@ -394,73 +400,89 @@ export class LeaveService {
     return this.getLeaveList(user, query);
   }
 
-  /**
-   * Duyệt đơn nghỉ
-   */
-  // async approveLeaveRequest(approverId: number, requestId: number) {
-  //   const approver = await this.userRepo.findOneBy({ id: approverId });
-  //   if (!approver) throw new NotFoundException('Không tìm thấy người duyệt');
+  // duyệt đơn nghỉ
+  async approveLeaveRequest(userId: number, requestId: number) {
+    return await this.dataSource.transaction(async (manager) => {
+      // lấy ra đơn nghỉ
+      const leave = await this.leaveRequestRepo.findOne({
+        where: { id: requestId },
+        relations: ['user'],
+      });
+      
+      if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
 
-  //   const request = await this.leaveRequestRepo.findOne({
-  //     where: { id: requestId },
-  //     relations: ['user'],
-  //   });
-  //   if (!request) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+      //lấy ra id người đang đăng nhập để kiểm tra quyền 
+      const user = await this.userRepo.findOneBy({id: userId})
+      
+      if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
+      
+      const ability = this.caslAbilityFactory.createForUser(user);
+      // Cách 1
+      //---------- dùng cách này thì sẽ chạy được 
+      // if (!ability.can(Action.Approve, LeaveRequest)) {
+      //   throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
+      // }
 
-  //   if (request.status !== LeaveRequestStatus.PENDING) {
-  //     throw new BadRequestException('Đơn này không ở trạng thái chờ duyệt');
-  //   }
+      // if (
+      //   user.role === UserRole.DEPARTMENT_LEAD &&
+      //   leave.user.departmentName !== user.departmentName
+      // ) {
+      //   throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
+      // }
+      
+      // --------------
+      // Cách 2
+      ForbiddenError
+        .from(ability)
+        .throwUnlessCan(Action.Approve, leave);
+      
+      if (leave.status !== LeaveRequestStatus.PENDING) {
+        throw new BadRequestException('Đơn này không thể duyệt');
+      }
 
-  //   // Kiểm tra quyền: DeptLead chỉ duyệt trong phòng ban mình
-  //   if (
-  //     approver.role === UserRole.DEPARTMENT_LEAD &&
-  //     request.user.departmentName !== approver.departmentName
-  //   ) {
-  //     throw new ForbiddenException('Bạn không có quyền duyệt đơn này');
-  //   }
+      // lấy hoặc tạo balance
+      const currentYear = new Date().getFullYear();
+      const balance = await this.getOrCreateBalance(leave.userId, currentYear, manager);
+      let warning: string | undefined;
+      if((leave.leaveType === LeaveType.UNPAID) && Number(balance.unpaidLeaveUsed) >= 30) {
+         warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay.`;
+      }
+      // cập nhật trạng thái đơn
+      leave.status = LeaveRequestStatus.APPROVED;
+      leave.approverId = user.id;
+      leave.approvedAt = new Date();
 
-  //   // Kiểm tra cảnh báo unpaid leave >= 30 ngày
-  //   const currentYear = new Date().getFullYear();
-  //   let balance = await this.getOrCreateBalance(request.userId, currentYear);
+      await manager.save(leave);
 
-  //   let warning: string | undefined;
-  //   if (
-  //     (request.leaveType === LeaveType.UNPAID || Number(request.unpaidLeaveDeduction) > 0) &&
-  //     Number(balance.unpaidLeaveUsed) >= 30
-  //   ) {
-  //     warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay. Vẫn duyệt?`;
-  //   }
+      if (leave.leaveType === LeaveType.COMPENSATORY) {
+        const leaveDays = this.calculateLeaveDays(
+          new Date(leave.startDate),
+          new Date(leave.endDate),
+          leave.startHalfDayType,
+          leave.endHalfDayType,
+        );
 
-  //   // Cập nhật trạng thái
-  //   request.status = LeaveRequestStatus.APPROVED;
-  //   request.approverId = approverId;
-  //   request.approvedAt = new Date();
-  //   await this.leaveRequestRepo.save(request);
+        balance.compensatoryBalance =
+          Number(balance.compensatoryBalance) - leaveDays * 8;
+      } else {
+        balance.annualLeaveUsed =
+          Number(balance.annualLeaveUsed) +
+          Number(leave.paidLeaveDeduction);
 
-  //   // Cập nhật leave balance dựa trên deduction đã tính
-  //   if (request.leaveType === LeaveType.COMPENSATORY) {
-  //     const leaveDays = this.calculateLeaveDays(
-  //       new Date(request.startDate),
-  //       new Date(request.endDate),
-  //       request.startHalfDayType,
-  //       request.endHalfDayType,
-  //     );
-  //     balance.compensatoryBalance = Number(balance.compensatoryBalance) - leaveDays * 8;
-  //   } else {
-  //     // Các loại nghỉ khác (PAID, UNPAID, PERSONAL_PAID, INSURANCE)
-  //     // đều sử dụng paidLeaveDeduction và unpaidLeaveDeduction
-  //     balance.annualLeaveUsed = Number(balance.annualLeaveUsed) + Number(request.paidLeaveDeduction);
-  //     balance.unpaidLeaveUsed = Number(balance.unpaidLeaveUsed) + Number(request.unpaidLeaveDeduction);
-  //   }
+        balance.unpaidLeaveUsed =
+          Number(balance.unpaidLeaveUsed) +
+        Number(leave.unpaidLeaveDeduction); 
+      }
 
-  //   await this.leaveBalanceRepo.save(balance);
+      await manager.save(balance);
 
-  //   return {
-  //     message: 'Duyệt đơn nghỉ thành công',
-  //     data: request,
-  //     ...(warning && { warning }),
-  //   };
-  // }
+      return {
+        message: 'Duyệt đơn nghỉ thành công',
+        data: leave,
+        ...(warning && { warning }),
+      };
+    })
+  }
 
   /**
    * Từ chối đơn nghỉ
@@ -548,8 +570,10 @@ export class LeaveService {
   private async getOrCreateBalance(
     userId: number,
     year: number,
+    manager?: EntityManager
   ): Promise<LeaveBalance> {
-    let balance = await this.leaveBalanceRepo.findOne({
+    const entityManager = manager ?? this.dataSource.manager
+    let balance = await entityManager.findOne(LeaveBalance,{
       where: { userId, year },
     });
 
@@ -557,9 +581,9 @@ export class LeaveService {
       return balance;
     }
 
-    const user = await this.userRepo.findOneBy({id: userId})
+    const user = await entityManager.findOne(User,{where:{id: userId}})
     if (!user) throw new NotFoundException('Không tìm thấy người dùng')
-    balance = await this.leaveAccrualService.backfillLeaveForUser(user);;
+    balance = await this.leaveAccrualService.backfillLeaveForUser(user, entityManager);;
 
     return balance;
   }
@@ -586,7 +610,7 @@ export class LeaveService {
       .andWhere('lr.status = :status', { status: LeaveRequestStatus.APPROVED });
     
     if (month !== undefined) {
-      // Lưu ý: tháng trong query là 1-12, month nhận vào là 0-11
+      //tháng trong query là 1-12, month nhận vào là 0-11
       query.andWhere('MONTH(lr.startDate) = :month AND YEAR(lr.startDate) = :year', {
         month: month + 1,
         year,

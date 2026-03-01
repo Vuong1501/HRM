@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, In } from 'typeorm';
+import { Repository, Not, In, EntityManager, DataSource } from 'typeorm';
 import { LeaveBalance } from './entities/leave-balance.entity';
 import { User } from '../users/entities/user.entity';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
@@ -16,6 +16,7 @@ export class LeaveAccrualService {
     private leaveBalanceRepo: Repository<LeaveBalance>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private dataSource: DataSource,
   ) {}
 
   /**
@@ -108,7 +109,10 @@ export class LeaveAccrualService {
     );
   }
 
-  async backfillLeaveForUser(user: User): Promise<LeaveBalance> {
+  async backfillLeaveForUser(
+    user: User,
+    manager?: EntityManager
+  ): Promise<LeaveBalance> {
     if (!user.startDate) {
       this.logger.warn(
         ` User ${user.id} chưa có startDate, bỏ qua backfill`,
@@ -138,14 +142,14 @@ export class LeaveAccrualService {
       Math.max(currentMonth - firstMonthInYear + 1, 0),
       12,
     );
-
+    const entityManager = manager ?? this.dataSource.manager
     // Lấy hoặc tạo balance
-    let balance = await this.leaveBalanceRepo.findOne({
+    let balance = await entityManager.findOne(LeaveBalance,{
       where: { userId: user.id, year: currentYear },
     });
 
     if (!balance) {
-      balance = this.leaveBalanceRepo.create({
+      balance = entityManager.create(LeaveBalance,{
         userId: user.id,
         year: currentYear,
         annualLeaveTotal: monthsToAccrue,
@@ -160,7 +164,7 @@ export class LeaveAccrualService {
       );
     }
 
-    balance = await this.leaveBalanceRepo.save(balance);
+    balance = await entityManager.save(LeaveBalance,balance);
 
     this.logger.log(
       ` Backfill user ${user.id} (${user.name}): ` +
