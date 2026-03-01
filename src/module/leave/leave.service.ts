@@ -486,43 +486,49 @@ export class LeaveService {
     })
   }
 
-  /**
-   * Từ chối đơn nghỉ
-   */
+  //Từ chối đơn nghỉ
   async rejectLeaveRequest(
-    approverId: number,
+    userId: number,
     requestId: number,
     dto: RejectLeaveDto,
   ) {
-    const approver = await this.userRepo.findOneBy({ id: approverId });
-    if (!approver) throw new NotFoundException('Không tìm thấy người duyệt');
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
 
-    const request = await this.leaveRequestRepo.findOne({
+    const leave = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
       relations: ['user'],
     });
-    if (!request) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+    if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
 
-    if (request.status !== LeaveRequestStatus.PENDING) {
+    // Kiểm tra quyền
+    const ability = this.caslAbilityFactory.createForUser(user);
+    // ----- cách 1
+    ForbiddenError.from(ability).throwUnlessCan(Action.Reject, leave);
+    // ------ cách 2: từ chối được 
+    // if (!ability.can(Action.Reject, LeaveRequest)) {
+    //     throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
+    //   }
+
+    //   if (
+    //     user.role === UserRole.DEPARTMENT_LEAD &&
+    //     leave.user.departmentName !== user.departmentName
+    //   ) {
+    //     throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
+    //   }
+
+    if (leave.status !== LeaveRequestStatus.PENDING) {
       throw new BadRequestException('Đơn này không ở trạng thái chờ duyệt');
     }
 
-    // Kiểm tra quyền
-    if (
-      approver.role === UserRole.DEPARTMENT_LEAD &&
-      request.user.departmentName !== approver.departmentName
-    ) {
-      throw new ForbiddenException('Bạn không có quyền từ chối đơn này');
-    }
-
-    request.status = LeaveRequestStatus.REJECTED;
-    request.rejectionReason = dto.rejectionReason;
-    request.approverId = approverId;
-    await this.leaveRequestRepo.save(request);
+    leave.status = LeaveRequestStatus.REJECTED;
+    leave.rejectionReason = dto.rejectionReason;
+    leave.approverId = userId;
+    await this.leaveRequestRepo.save(leave);
 
     return {
       message: 'Đã từ chối đơn nghỉ',
-      data: request,
+      data: leave,
     };
   }
 
@@ -621,7 +627,6 @@ export class LeaveService {
 
     return res.sendFile(filePath);
   }
-
 
   // Tính số ngày nghỉ (startDate → endDate, inclusive)
   private calculateLeaveDays(startDate: Date, endDate: Date, startHalf: HalfDayType, endHalf: HalfDayType): number {

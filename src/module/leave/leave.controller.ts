@@ -122,11 +122,10 @@ export class LeaveController {
     return this.leaveService.approveLeaveRequest(req.user.userId, id);
   }
 
-  /**
-   * Department Lead / Admin: Từ chối đơn
-   * PATCH /leave/:id/reject
-   */
+  // Department Lead / Admin: Từ chối đơn
   @Patch(':id/reject')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Reject, LeaveRequest))
   rejectRequest(
     @Req() req: RequestWithUser,
     @Param('id', ParseIntPipe) id: number,

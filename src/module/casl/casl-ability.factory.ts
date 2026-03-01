@@ -32,6 +32,7 @@ export class CaslAbilityFactory {
       // Leave: đọc + duyệt đơn của nhân viên cùng phòng ban
       can(Action.Read, LeaveRequest, {user: {departmentName: user.departmentName}});
       can(Action.Approve, LeaveRequest, {user: {departmentName: user.departmentName}});
+      can(Action.Reject, LeaveRequest, {user: {departmentName: user.departmentName}});
       // đang có cách làm là bỏ qua điều kiện departmentName trong casl thì sẽ ok
     } else if (user.role === UserRole.EMPLOYEE) {
       can(Action.Read, User, { id: user.id });
