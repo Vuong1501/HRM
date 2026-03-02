@@ -78,6 +78,9 @@ export class LeaveRequest {
   @Column({ type: 'text', nullable: true })
   rejectionReason: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  cancelReason: string | null;
+
   // Người duyệt
   @Column({ nullable: true })
   approverId: number | null;

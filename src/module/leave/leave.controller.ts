@@ -29,6 +29,7 @@ import { extname } from 'path';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 import type  { Response } from 'express';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
+import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -138,16 +139,16 @@ export class LeaveController {
     return this.leaveService.rejectLeaveRequest(req.user.userId, id, dto);
   }
 
-  /**
-   * Employee tự hủy đơn nghỉ
-   * PATCH /leave/:id/cancel
-   */
+  // Employee tự hủy đơn nghỉ
   @Patch(':id/cancel')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Cancel, LeaveRequest))
   cancelRequest(
     @Req() req: RequestWithUser,
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CancelLeaveRequestDto,
   ) {
-    return this.leaveService.cancelLeaveRequest(req.user.userId, id);
+    return this.leaveService.cancelLeaveRequest(req.user.userId, id, dto);
   }
 
   // xem chi tiết đơn xin nghỉ

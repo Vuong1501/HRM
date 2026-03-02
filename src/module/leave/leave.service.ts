@@ -31,6 +31,7 @@ import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { ForbiddenError } from '@casl/ability';
 import { Action } from 'src/common/enums/action.enum';
 import { join } from 'path';
+import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 
 @Injectable()
 export class LeaveService {
@@ -419,22 +420,22 @@ export class LeaveService {
       const ability = this.caslAbilityFactory.createForUser(user);
       // Cách 1
       //---------- dùng cách này thì sẽ chạy được 
-      // if (!ability.can(Action.Approve, LeaveRequest)) {
-      //   throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
-      // }
+      if (!ability.can(Action.Approve, LeaveRequest)) {
+        throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
+      }
 
-      // if (
-      //   user.role === UserRole.DEPARTMENT_LEAD &&
-      //   leave.user.departmentName !== user.departmentName
-      // ) {
-      //   throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
-      // }
-      
+      if (
+        user.role === UserRole.DEPARTMENT_LEAD &&
+        leave.user.departmentName !== user.departmentName
+      ) {
+        throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
+      }
+
       // --------------
       // Cách 2
-      ForbiddenError
-        .from(ability)
-        .throwUnlessCan(Action.Approve, leave);
+      // ForbiddenError
+      //   .from(ability)
+      //   .throwUnlessCan(Action.Approve, leave);
       
       if (leave.status !== LeaveRequestStatus.PENDING) {
         throw new BadRequestException('Đơn này không thể duyệt');
@@ -530,30 +531,69 @@ export class LeaveService {
     };
   }
 
-  /**
-   * Nhân viên tự hủy đơn (chỉ khi PENDING)
-   */
-  async cancelLeaveRequest(userId: number, requestId: number) {
-    const request = await this.leaveRequestRepo.findOneBy({
-      id: requestId,
-      userId,
-    });
+  // Nhân viên tự hủy đơn nghỉ
+  async cancelLeaveRequest(userId: number, requestId: number, dto: CancelLeaveRequestDto) {
+    return await this.dataSource.transaction(async (manager) => {
+      const leaveRequest = await manager.findOne(LeaveRequest, {
+        where: { id: requestId },
+        relations: ['attachments'], // để xóa file đính kèm nếu có
+      });
 
-    if (!request) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+      if (!leaveRequest) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+      if (leaveRequest.userId !== userId) {
+        throw new ForbiddenException('Bạn không có quyền hủy đơn này');
+      }
 
-    if (request.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException(
-        'Chỉ có thể hủy đơn ở trạng thái chờ duyệt',
-      );
-    }
+      if (
+        leaveRequest.status !== LeaveRequestStatus.PENDING &&
+        leaveRequest.status !== LeaveRequestStatus.APPROVED
+      ) {
+        throw new BadRequestException('Không thể hủy đơn ở trạng thái này');
+      }
 
-    request.status = LeaveRequestStatus.CANCELLED;
-    await this.leaveRequestRepo.save(request);
+      if (leaveRequest.status === LeaveRequestStatus.APPROVED) {
+        if (!dto.cancelReason?.trim()) {
+          throw new BadRequestException('Cần nhập lý do khi hủy đơn đã được duyệt');
+        }
+        const currentYear = new Date().getFullYear();
+        const balance = await this.getOrCreateBalance(leaveRequest.userId, currentYear, manager);
+        if (leaveRequest.leaveType === LeaveType.COMPENSATORY) {
+          const leaveDays = this.calculateLeaveDays(
+            new Date(leaveRequest.startDate),
+            new Date(leaveRequest.endDate),
+            leaveRequest.startHalfDayType,
+            leaveRequest.endHalfDayType,
+          );
+          // Hoàn trả giờ bù
+          balance.compensatoryBalance = Number(balance.compensatoryBalance) + leaveDays * 8;
+        } else {
+          // Hoàn trả phép năm và không lương 
+          balance.annualLeaveUsed = Number(balance.annualLeaveUsed) - Number(leaveRequest.paidLeaveDeduction);
+          balance.unpaidLeaveUsed = Number(balance.unpaidLeaveUsed) - Number(leaveRequest.unpaidLeaveDeduction);
+        }
+        await manager.save(balance);
+      }
 
-    return {
-      message: 'Đã hủy đơn nghỉ',
-      data: request,
-    };
+      // Xóa file đính kèm nếu có
+      if (leaveRequest.attachments?.length > 0) {
+        await Promise.all(
+          leaveRequest.attachments.map((file) =>
+            unlink(file.filePath).catch(() => {}),
+          ),
+        );
+        await manager.delete(LeaveAttachment, { leaveRequestId: leaveRequest.id });
+      }
+
+      leaveRequest.status = LeaveRequestStatus.CANCELLED;
+      leaveRequest.cancelReason = dto.cancelReason ?? null;
+      leaveRequest.paidLeaveDeduction = 0;
+      leaveRequest.unpaidLeaveDeduction = 0;
+      await manager.save(leaveRequest);
+
+      return {
+        message: 'Đã hủy đơn nghỉ'
+      };
+    })
   }
 
   //cập nhật đơn xin nghỉ

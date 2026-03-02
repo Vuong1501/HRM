@@ -41,6 +41,7 @@ export class CaslAbilityFactory {
       can(Action.Create, LeaveRequest);
       can(Action.Read, LeaveRequest, { userId: user.id });
       can(Action.Update, LeaveRequest, { userId: user.id });
+      can(Action.Cancel, LeaveRequest);
     }
 
     return build({
