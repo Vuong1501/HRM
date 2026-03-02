@@ -403,7 +403,8 @@ export class LeaveService {
 
   // duyệt đơn nghỉ
   async approveLeaveRequest(userId: number, requestId: number) {
-    return await this.dataSource.transaction(async (manager) => {
+    let approvedLeave: LeaveRequest;
+    const result = await this.dataSource.transaction(async (manager) => {
       // lấy ra đơn nghỉ
       const leave = await this.leaveRequestRepo.findOne({
         where: { id: requestId },
@@ -416,13 +417,6 @@ export class LeaveService {
       const user = await this.userRepo.findOneBy({id: userId})
       
       if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
-      
-      const ability = this.caslAbilityFactory.createForUser(user);
-      // Cách 1
-      //---------- dùng cách này thì sẽ chạy được 
-      if (!ability.can(Action.Approve, LeaveRequest)) {
-        throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
-      }
 
       if (
         user.role === UserRole.DEPARTMENT_LEAD &&
@@ -431,12 +425,6 @@ export class LeaveService {
         throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
       }
 
-      // --------------
-      // Cách 2
-      // ForbiddenError
-      //   .from(ability)
-      //   .throwUnlessCan(Action.Approve, leave);
-      
       if (leave.status !== LeaveRequestStatus.PENDING) {
         throw new BadRequestException('Đơn này không thể duyệt');
       }
@@ -476,13 +464,33 @@ export class LeaveService {
       }
 
       await manager.save(balance);
+      approvedLeave = leave;
 
       return {
         message: 'Duyệt đơn nghỉ thành công',
-        data: leave,
         ...(warning && { warning }),
       };
     })
+
+    try {
+      const hrs = await this.userRepo.find({
+      where: { role: UserRole.HR },
+    });
+
+    await Promise.all(
+      hrs.map((hr) =>
+        this.mailService.sendLeaveApprovedNotification(
+          hr.email,
+          approvedLeave.user.name,
+          new Date(approvedLeave.startDate),
+          new Date(approvedLeave.endDate),
+        ),
+      ),
+    );
+    } catch (error) {
+      console.error('Send mail failed:', error);
+    }
+    return result
   }
 
   //Từ chối đơn nghỉ

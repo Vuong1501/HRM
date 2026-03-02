@@ -22,6 +22,7 @@ export class MailService {
     }) as Transporter;
   }
 
+  // hr gửi mail mời nhân viên mới
   async sendInvite(email: string, link: string): Promise<void> {
     await this.transporter.sendMail({
       from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
@@ -35,6 +36,7 @@ export class MailService {
     });
   }
 
+  // nhân viên gửi mail thông báo cho lead dep
   async sendLeaveRequestNotification(
     to: string, 
     employeeName: string,
@@ -82,6 +84,52 @@ export class MailService {
           <br/>
 
           <p>Please login to HR System to review and approve.</p>
+      `,
+    });
+  }
+
+  // gửi thông báo cho hr là có đơn xin nghỉ đã được duyệt
+  async sendLeaveApprovedNotification(
+    to: string,
+    employeeName: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const formatDate = (date: Date) => {
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    };
+
+    await this.transporter.sendMail({
+      from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
+      to: to,
+      subject: 'Leave Request Approved',
+
+      html: `
+        <h2>Leave Request Approved</h2>
+
+        <p>Hello,</p>
+
+        <p><b>${employeeName}</b>’s leave request has been approved.</p>
+
+        <table border="1" cellpadding="5" cellspacing="0">
+          <tr>
+            <td><b>From</b></td>
+            <td>${formatDate(startDate)}</td>
+          </tr>
+
+          <tr>
+            <td><b>To</b></td>
+            <td>${formatDate(endDate)}</td>
+          </tr>
+        </table>
+
+        <br/>
+
+        <p>The leave has been updated in the system.</p>
       `,
     });
   }
