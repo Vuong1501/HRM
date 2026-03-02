@@ -28,12 +28,14 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 import type  { Response } from 'express';
+import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
 export class LeaveController {
   constructor(private readonly leaveService: LeaveService) {}
 
+  // tạo đơn nghỉ
   @Post('request')
   @CheckPolicies((ability) =>
   ability.can(Action.Create, LeaveRequest))
@@ -82,6 +84,7 @@ export class LeaveController {
     return this.leaveService.createLeaveRequest(req.user.userId, dto, files);
   }
 
+  // danh sách đơn nghỉ của mình
   @Get('my-requests')
   @CheckPolicies((ability) =>
     ability.can(Action.Read, LeaveRequest))
@@ -101,6 +104,7 @@ export class LeaveController {
     return this.leaveService.getMyBalance(req.user.userId);
   }
 
+  // lấy danh sách đơn nghỉ của phòng ban
   @Get('list-requests')
   @CheckPolicies((ability) =>
     ability.can(Action.Read, LeaveRequest))
@@ -167,5 +171,55 @@ export class LeaveController {
     @Res() res: Response,
   ) {
     return this.leaveService.getLeaveRequestAttachments(req.userEntity, id, res);
+  }
+
+  // cập nhật đơn nghỉ
+  @Patch(':id/update')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Update, LeaveRequest))
+  @UseInterceptors(
+    FilesInterceptor('attachments', 5, {
+      storage: diskStorage({
+        destination: './uploads/leave',
+        filename: (req, file, cb) => {
+          const uniqueName =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueName + extname(file.originalname));
+        },
+      }),
+
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+          'application/pdf',
+          'image/jpeg',
+          'image/png',
+        ];
+        const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+        const ext = extname(file.originalname).toLowerCase();
+
+        if (!allowedTypes.includes(file.mimetype) || !allowedExtensions.includes(ext)) {
+          return cb(
+            new BadRequestException(
+              'Chỉ cho phép file PDF, PNG, JPG, JPEG',
+            ),
+            false,
+          );
+        }
+
+        cb(null, true);
+      },
+    }),
+  )
+  updateRequest(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateLeaveRequestDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.leaveService.updateLeaveRequest(req.userEntity, id, dto, files);
   }
 }

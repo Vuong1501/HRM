@@ -82,10 +82,16 @@ export class LeaveRequest {
   @Column({ nullable: true })
   approverId: number | null;
 
-  @Column({ type: 'decimal', default: 0 })
+  @Column({ type: 'decimal',
+  precision: 5,
+  scale: 1,
+  default: 0, })
   paidLeaveDeduction: number;
 
-  @Column({ type: 'decimal', default: 0 })
+  @Column({ type: 'decimal',
+  precision: 5,
+  scale: 1,
+  default: 0, })
   unpaidLeaveDeduction: number;
 
   @ManyToOne(() => User, { nullable: true })
