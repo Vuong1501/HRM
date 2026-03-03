@@ -406,7 +406,7 @@ export class LeaveService {
     let approvedLeave: LeaveRequest;
     const result = await this.dataSource.transaction(async (manager) => {
       // lấy ra đơn nghỉ
-      const leave = await this.leaveRequestRepo.findOne({
+      const leave = await manager.findOne(LeaveRequest,{
         where: { id: requestId },
         relations: ['user'],
       });
@@ -414,7 +414,7 @@ export class LeaveService {
       if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
 
       //lấy ra id người đang đăng nhập để kiểm tra quyền 
-      const user = await this.userRepo.findOneBy({id: userId})
+      const user = await manager.findOneBy(User,{id: userId})
       
       if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
 
