@@ -22,7 +22,7 @@ import { InsuranceSubType, PersonalPaidSubType } from 'src/common/enums/leave-su
 import { LeaveAccrualService } from './leave-accrual.service';
 import { MailService } from '../mail/mail.service';
 import { DataSource, QueryRunner } from 'typeorm';
-import { LeaveAttachment } from './entities/leave_attachments';
+import { LeaveAttachment } from './entities/leave_attachments.entity';
 import { unlink } from 'fs/promises';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';

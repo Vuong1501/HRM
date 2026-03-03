@@ -11,7 +11,7 @@ import { LeaveSeedService } from './leave-seed.service';
 
 import { LeaveConfig } from './entities/leave-config.entity';
 import { MailModule } from '../mail/mail.module';
-import { LeaveAttachment } from './entities/leave_attachments';
+import { LeaveAttachment } from './entities/leave_attachments.entity';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
 
 @Module({

@@ -172,7 +172,7 @@ export class LeaveController {
     @Res() res: Response,
   ) {
     return this.leaveService.getLeaveRequestAttachments(req.userEntity, id, res);
-  }
+  } 
 
   // cập nhật đơn nghỉ
   @Patch(':id/update')
