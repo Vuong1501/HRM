@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Get, Query } from '@nestjs/common';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import type { Request, Response } from 'express';
+import { APP_ERRORS } from 'src/common/errors/app.errors';
 
 @Controller('invite')
 export class InviteController {
@@ -20,10 +21,10 @@ export class InviteController {
       where: { inviteToken: token },
     });
 
-    if (!user) throw new UnauthorizedException('Invalid invite');
+    if (!user) throw new UnauthorizedException(APP_ERRORS.INVALID_INVITE);
 
     if (user.status !== UserStatus.INVITED)
-      throw new UnauthorizedException('Invite already used');
+      throw new UnauthorizedException(APP_ERRORS.INVITE_ALREADY_USED);
 
     res.cookie('invite_token', token, {
       httpOnly: true,

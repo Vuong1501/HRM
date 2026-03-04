@@ -14,6 +14,7 @@ import type { Request, Response } from 'express';
 // import { ZohoAuthGuard } from 'src/common/guards/zoho.guard';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoginDevDto } from './dto/login-dev.dto';
+import { APP_ERRORS } from 'src/common/errors/app.errors';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -40,7 +41,7 @@ export class AuthController {
   async zohoCallback(@Req() req: Express.Request, @Res() res: Response) {
     // const token = req.query.state as string;
     if (!req.user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     }
     const inviteToken = req.cookies.invite_token;
     const result = await this.authService.loginZoho(req.user, inviteToken);

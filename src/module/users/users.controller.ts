@@ -21,6 +21,7 @@ import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { ForbiddenError } from '@casl/ability';
 import { ActiveUser } from 'src/common/interfaces/active-user.interface';
 import type { RequestWithUser } from 'src/common/interfaces/request-with-user.interface';
+import { APP_ERRORS } from 'src/common/errors/app.errors';
 
 @ApiTags('users')
 @Controller('users')
@@ -36,7 +37,7 @@ export class UsersController {
   @ApiBearerAuth()
   getMe(@Req() req: RequestWithUser) {
     if (!req.user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     }
     return this.usersService.getMe(req.user.userId);
   }
@@ -55,7 +56,7 @@ export class UsersController {
     const userToRead = await this.usersService.findOneEntity(id);
     // Sử dụng userEntity đã được PoliciesGuard fetch sẵn
     if (!req.userEntity) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     }
     const ability = this.caslAbilityFactory.createForUser(req.userEntity);
 
@@ -63,7 +64,7 @@ export class UsersController {
       ForbiddenError.from(ability).throwUnlessCan(Action.Read, userToRead);
       return this.usersService.toResponse(userToRead);
     } catch (error) {
-      throw new ForbiddenException('Bạn không có quyền xem thông tin này');
+      throw new ForbiddenException(APP_ERRORS.VIEW_USER_FORBIDDEN);
     }
   }
 }

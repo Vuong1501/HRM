@@ -12,6 +12,7 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { LoginDevDto } from './dto/login-dev.dto';
+import { APP_ERRORS } from 'src/common/errors/app.errors';
 
 @Injectable()
 export class AuthService {
@@ -31,13 +32,13 @@ export class AuthService {
         where: { inviteToken },
       });
 
-      if (!user) throw new UnauthorizedException('Invalid invite');
+      if (!user) throw new UnauthorizedException(APP_ERRORS.INVALID_INVITE);
 
       if (user.status !== UserStatus.INVITED)
-        throw new UnauthorizedException('Invite already used');
+        throw new UnauthorizedException(APP_ERRORS.INVITE_ALREADY_USED);
 
       if (profile.email !== user.email)
-        throw new ForbiddenException('Email Zoho không khớp lời mời');
+        throw new ForbiddenException(APP_ERRORS.EMAIL_MISMATCH);
 
       user.status = UserStatus.ACTIVE;
       user.zohoId = profile.zohoId;
@@ -49,10 +50,10 @@ export class AuthService {
         where: [{ zohoId: profile.zohoId }, { email: profile.email }],
       });
 
-      if (!user) throw new UnauthorizedException('User not registered');
+      if (!user) throw new UnauthorizedException(APP_ERRORS.USER_NOT_REGISTERED);
 
       if (user.status !== UserStatus.ACTIVE)
-        throw new UnauthorizedException('User not active');
+        throw new UnauthorizedException(APP_ERRORS.USER_NOT_ACTIVE);
 
       if (!user.zohoId) {
         user.zohoId = profile.zohoId;
@@ -108,7 +109,7 @@ export class AuthService {
   async devLogin(dto: LoginDevDto) {
     if (process.env.NODE_ENV === 'production') {
       this.logger.warn('Dev chỉ login ở development');
-      throw new ForbiddenException('Dev login disabled in production');
+      throw new ForbiddenException(APP_ERRORS.DEV_LOGIN_DISABLED);
     }
 
     const user = await this.userRepositoy.findOne({
@@ -117,7 +118,7 @@ export class AuthService {
 
     if (!user) {
       this.logger.warn(`Dev login user not found: ${dto.email}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
     const payload = {
       email: user.email,

@@ -74,7 +74,7 @@ export class HrController {
   @ApiBearerAuth()
   async uploadBulkInvite(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      throw new BadRequestException('Vui lòng upload file');
+      throw new BadRequestException({ code: 'FILE_REQUIRED', message: 'Vui lòng upload file' });
     }
 
     // Đọc file Excel

@@ -2,6 +2,8 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
@@ -15,6 +17,7 @@ import { User } from 'src/module/users/entities/user.entity';
 import { Repository } from 'typeorm';
 import { ActiveUser } from '../interfaces/active-user.interface';
 import type { RequestWithUser } from '../interfaces/request-with-user.interface';
+import { APP_ERRORS } from '../errors/app.errors';
 
 @Injectable()
 export class PoliciesGuard implements CanActivate {
@@ -36,22 +39,26 @@ export class PoliciesGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<RequestWithUser>();
     const userFromToken = req.user;
     
-    if (!userFromToken) return false;
+    if (!userFromToken) throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
 
     const user = await this.userRepository.findOneBy({
       id: userFromToken.userId,
     });
     
-    if (!user) return false;
+    if (!user) throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     req.userEntity = user;
 
     const ability = this.caslAbilityFactory.createForUser(user);
     // console.log("ability", ability);
     // (ability) => ability.can(Action.Read, User)
 
-    return policyHandlers.every((handler) =>
+    const allowed = policyHandlers.every((handler) =>
       this.execPolicyHandler(handler, ability),
     );
+    if (!allowed) {
+      throw new ForbiddenException(APP_ERRORS.FORBIDDEN);
+    }
+    return true;
   }
 
   private execPolicyHandler(handler: PolicyHandler, ability: AppAbility) {
