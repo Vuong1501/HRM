@@ -1,38 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import { MailerService } from '@nestjs-modules/mailer';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class MailService {
-  private transporter: Transporter;
-
-  constructor() {
-    const user = process.env.ZOHO_EMAIL;
-    const pass = process.env.ZOHO_APP_PASSWORD;
-
-    if (!user || !pass) {
-      throw new Error('Mail env missing');
-    }
-
-    this.transporter = nodemailer.createTransport({
-      host: 'smtp.zoho.com',
-      port: 465,
-      secure: true,
-      auth: { user, pass },
-    }) as Transporter;
-  }
+  constructor(private readonly mailerService: MailerService) {}
 
   // hr gửi mail mời nhân viên mới
   async sendInvite(email: string, link: string): Promise<void> {
-    await this.transporter.sendMail({
-      from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
+    await this.mailerService.sendMail({
       to: email,
       subject: 'Invitation to HR System',
-      html: `
-        <h3>You are invited</h3>
-        <p>Click below:</p>
-        <a href="${link}">Accept invitation</a>
-      `,
+      template: 'invite',
+      context: {link}
     });
   }
 
@@ -44,49 +24,18 @@ export class MailService {
     startDate: Date,
     endDate: Date,
     ): Promise<void> {
-      const formatDate = (date: Date) => {
-        return date.toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-        });
-      };
-
-      await this.transporter.sendMail({
-        from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
+      await this.mailerService.sendMail({
         to: to,
         subject: 'Leave Request Notification',
-
-        html: `
-          <h2>Leave Request</h2>
-
-          <p>Hello,</p>
-
-          <p><b>${employeeName}</b> has submitted a leave request.</p>
-
-          <table border="1" cellpadding="5" cellspacing="0">
-            <tr>
-              <td><b>Department</b></td>
-              <td>${departmentName}</td>
-            </tr>
-
-            <tr>
-              <td><b>From</b></td>
-              <td>${formatDate(startDate)}</td>
-            </tr>
-
-            <tr>
-              <td><b>To</b></td>
-              <td>${formatDate(endDate)}</td>
-            </tr>
-          </table>
-
-          <br/>
-
-          <p>Please login to HR System to review and approve.</p>
-      `,
-    });
-  }
+        template: 'leave-request-notification',
+        context: {
+          employeeName,
+          departmentName,
+          startDate: dayjs(startDate).format('DD MMM YYYY'),
+          endDate: dayjs(endDate).format('DD MMM YYYY'),
+        },
+      });
+    }
 
   // gửi thông báo cho hr là có đơn xin nghỉ đã được duyệt
   async sendLeaveApprovedNotification(
@@ -95,42 +44,16 @@ export class MailService {
     startDate: Date,
     endDate: Date,
   ): Promise<void> {
-    const formatDate = (date: Date) => {
-      return date.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
-    };
-
-    await this.transporter.sendMail({
-      from: `"HR System" <${process.env.ZOHO_EMAIL}>`,
+    await this.mailerService.sendMail({
       to: to,
       subject: 'Leave Request Approved',
-
-      html: `
-        <h2>Leave Request Approved</h2>
-
-        <p>Hello,</p>
-
-        <p><b>${employeeName}</b>’s leave request has been approved.</p>
-
-        <table border="1" cellpadding="5" cellspacing="0">
-          <tr>
-            <td><b>From</b></td>
-            <td>${formatDate(startDate)}</td>
-          </tr>
-
-          <tr>
-            <td><b>To</b></td>
-            <td>${formatDate(endDate)}</td>
-          </tr>
-        </table>
-
-        <br/>
-
-        <p>The leave has been updated in the system.</p>
-      `,
+      template: 'leave-approved',
+      context: {
+        employeeName,
+        startDate: dayjs(startDate).format('DD MMM YYYY'),
+        endDate: dayjs(endDate).format('DD MMM YYYY'),
+      },
     });
+
   }
 }

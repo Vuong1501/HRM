@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@casl/ability": "^6.8.0",
+    "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -40,6 +41,7 @@
     "class-validator": "^0.14.3",
     "cookie-parser": "^1.4.7",
     "express-session": "^1.19.0",
+    "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.16.2",
     "nodemailer": "^7.0.13",
