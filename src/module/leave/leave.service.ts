@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, Between, In, EntityManager } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { Response } from 'express';
 import { LeaveRequest } from './entities/leave-request.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
@@ -18,19 +18,14 @@ import { User } from '../users/entities/user.entity';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { HalfDayType } from 'src/common/enums/halfDayType.enum';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
-import { InsuranceSubType, PersonalPaidSubType } from 'src/common/enums/leave-subType.enum';
 import { LeaveAccrualService } from './leave-accrual.service';
 import { MailService } from '../mail/mail.service';
-import { DataSource, QueryRunner } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { LeaveAttachment } from './entities/leave_attachments.entity';
-import { unlink } from 'fs/promises';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CaslAbilityFactory } from '../casl/casl-ability.factory';
-import { ForbiddenError } from '@casl/ability';
-import { Action } from 'src/common/enums/action.enum';
-import { join } from 'path';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { StorageService } from 'src/common/storage/storage.service';
 
@@ -507,22 +502,12 @@ export class LeaveService {
       relations: ['user'],
     });
     if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
-
-    // Kiểm tra quyền
-    const ability = this.caslAbilityFactory.createForUser(user);
-    // ----- cách 1
-    ForbiddenError.from(ability).throwUnlessCan(Action.Reject, leave);
-    // ------ cách 2: từ chối được 
-    // if (!ability.can(Action.Reject, LeaveRequest)) {
-    //     throw new ForbiddenException('Bạn không có quyền duyệt đơn nghỉ');
-    //   }
-
-    //   if (
-    //     user.role === UserRole.DEPARTMENT_LEAD &&
-    //     leave.user.departmentName !== user.departmentName
-    //   ) {
-    //     throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
-    //   }
+    if (
+      user.role === UserRole.DEPARTMENT_LEAD &&
+      leave.user.departmentName !== user.departmentName
+    ) {
+      throw new ForbiddenException('Bạn chỉ có thể từ chối đơn của nhân viên trong phòng ban mình');
+    }
 
     if (leave.status !== LeaveRequestStatus.PENDING) {
       throw new BadRequestException('Đơn này không ở trạng thái chờ duyệt');
@@ -624,10 +609,12 @@ export class LeaveService {
     });
     if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
 
-    const ability = this.caslAbilityFactory.createForUser(user);
-    ForbiddenError
-      .from(ability)
-      .throwUnlessCan(Action.Update, leave);
+    if (
+      user.role === UserRole.EMPLOYEE &&
+      leave.userId !== user.id
+    ) {
+      throw new ForbiddenException('Bạn chỉ có thể cập nhật đơn của mình');
+    }
 
     if (leave.status !== LeaveRequestStatus.PENDING) {
       throw new BadRequestException(
@@ -879,9 +866,12 @@ export class LeaveService {
     
     if (!leave) throw new NotFoundException('Không tìm thấy đơn xin nghỉ');
 
-    // Kiểm tra quyền của người dùng đối với đơn cụ thể này
-    const ability = this.caslAbilityFactory.createForUser(user);
-    ForbiddenError.from(ability).throwUnlessCan(Action.Read, leave);
+    if (
+      user.role === UserRole.EMPLOYEE &&
+      leave.userId !== user.id
+    ) {
+      throw new ForbiddenException('Bạn chỉ có thể xem chi tiết đơn của mình');
+    }
 
     const totalDays = this.calculateLeaveDays(
       new Date(leave.startDate),
@@ -915,9 +905,12 @@ export class LeaveService {
     throw new NotFoundException('Không tìm thấy file');
   }
 
-    // check quyền dựa trên đơn nghỉ
-    const ability = this.caslAbilityFactory.createForUser(user);
-    ForbiddenError.from(ability).throwUnlessCan(Action.Read, attachment.leaveRequest);
+  if (
+    user.role === UserRole.EMPLOYEE &&
+    attachment.leaveRequest.userId !== user.id
+  ) {
+    throw new ForbiddenException('Bạn không có quyền xem file này');
+  }
 
     const fileStream = await this.storageService.getFileStream(attachment.fileKey);
 

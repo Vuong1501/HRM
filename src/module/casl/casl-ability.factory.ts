@@ -28,19 +28,19 @@ export class CaslAbilityFactory {
       can(Action.Read, LeaveRequest);
       can(Action.Create, LeaveRequest);
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
-      can(Action.Read, User, { departmentName: user.departmentName });
+      can(Action.Read, User);
       // Leave: đọc + duyệt đơn của nhân viên cùng phòng ban
-      can(Action.Read, LeaveRequest, {user: {departmentName: user.departmentName}});
+      can(Action.Read, LeaveRequest);
       can(Action.Approve, LeaveRequest);
-      can(Action.Reject, LeaveRequest, {user: {departmentName: user.departmentName}});
+      can(Action.Reject, LeaveRequest);
       // đang có cách làm là bỏ qua điều kiện departmentName trong casl thì sẽ ok
     } else if (user.role === UserRole.EMPLOYEE) {
-      can(Action.Read, User, { id: user.id });
-      can(Action.Update, User, { id: user.id });
+      can(Action.Read, User);
+      can(Action.Update, User);
       // Leave: tạo, đọc, cập nhật đơn của mình
       can(Action.Create, LeaveRequest);
-      can(Action.Read, LeaveRequest, { userId: user.id });
-      can(Action.Update, LeaveRequest, { userId: user.id });
+      can(Action.Read, LeaveRequest);
+      can(Action.Update, LeaveRequest);
       can(Action.Cancel, LeaveRequest);
     }
 
