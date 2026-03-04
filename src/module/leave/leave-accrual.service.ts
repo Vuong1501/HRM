@@ -111,7 +111,6 @@ export class LeaveAccrualService {
 
   async backfillLeaveForUser(
     user: User,
-    manager?: EntityManager
   ): Promise<LeaveBalance> {
     if (!user.startDate) {
       this.logger.warn(
@@ -142,14 +141,13 @@ export class LeaveAccrualService {
       Math.max(currentMonth - firstMonthInYear + 1, 0),
       12,
     );
-    const entityManager = manager ?? this.dataSource.manager
     // Lấy hoặc tạo balance
-    let balance = await entityManager.findOne(LeaveBalance,{
+    let balance = await this.leaveBalanceRepo.findOne({
       where: { userId: user.id, year: currentYear },
     });
 
     if (!balance) {
-      balance = entityManager.create(LeaveBalance,{
+      balance = this.leaveBalanceRepo.create({
         userId: user.id,
         year: currentYear,
         annualLeaveTotal: monthsToAccrue,
@@ -164,7 +162,7 @@ export class LeaveAccrualService {
       );
     }
 
-    balance = await entityManager.save(LeaveBalance,balance);
+    balance = await this.leaveBalanceRepo.save(balance);
 
     this.logger.log(
       ` Backfill user ${user.id} (${user.name}): ` +
