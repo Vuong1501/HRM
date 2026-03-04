@@ -25,9 +25,9 @@ import { LeaveAttachment } from './entities/leave_attachments.entity';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
-import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { StorageService } from 'src/common/storage/storage.service';
+import { LEAVE_ERRORS } from './leave.errors';
 
 @Injectable()
 export class LeaveService {
@@ -47,7 +47,6 @@ export class LeaveService {
     @InjectRepository(LeaveAttachment)
     private leaveAttachmentRepo: Repository<LeaveAttachment>,
 
-    private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly queryBuilder: LeaveRequestQueryBuilder,
     private leaveAccrualService: LeaveAccrualService,
     private mailService: MailService,
@@ -109,22 +108,19 @@ export class LeaveService {
 
     // nghỉ bảo hiểm bắt buộc có file đính kèm
     if (dto.leaveType === LeaveType.INSURANCE && (!files || files.length === 0)) {
-      throw new BadRequestException('Nghỉ bảo hiểm bắt buộc phải đính kèm hồ sơ');
+      throw new BadRequestException(LEAVE_ERRORS.INSURANCE_REQUIRES_ATTACHMENT);
     }
 
     //Tìm user
     const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) throw new NotFoundException('Không tìm thấy nhân viên');
+    if (!user) throw new NotFoundException(LEAVE_ERRORS.EMPLOYEE_NOT_FOUND);
 
     // kiểm tra type nhân viên
     if (
       (dto.leaveType === LeaveType.PAID || dto.leaveType === LeaveType.INSURANCE) &&
       user.employmentType !== EmploymentType.OFFICIAL
     ) {
-      throw new ForbiddenException(
-        `Bạn chưa lên chính thức nên chưa được sử dụng phép năm hoặc nghỉ bảo hiểm
-        . Phép năm của bạn đang được tích lũy và sẽ được dùng khi lên chính thức.`,
-      );
+      throw new ForbiddenException(LEAVE_ERRORS.NOT_OFFICIAL_EMPLOYEE);
     }
 
     const startDate = new Date(dto.startDate);
@@ -135,12 +131,12 @@ export class LeaveService {
 
     // kiểm tra ngày bắt đầu và kết thúc
     if (startDate > endDate) {
-      throw new BadRequestException('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
+      throw new BadRequestException(LEAVE_ERRORS.INVALID_DATE_RANGE);
     }
 
     if (startDate.getTime() === endDate.getTime()) {
       if (dto.startHalfDayType === HalfDayType.AFTERNOON && dto.endHalfDayType === HalfDayType.MORNING) {
-        throw new BadRequestException('Buổi bắt đầu không thể sau buổi kết thúc trong cùng một ngày');
+        throw new BadRequestException(LEAVE_ERRORS.INVALID_HALF_DAY);
       }
     }
     if (startDate < today) {
@@ -152,9 +148,7 @@ export class LeaveService {
       const startYear = startDate.getFullYear();
 
       if (startMonth !== currentMonth || startYear !== currentYear) {
-        throw new BadRequestException(
-          'Chỉ được phép điền ngày nghỉ trong quá khứ trong tháng hiện tại',
-        );
+        throw new BadRequestException(LEAVE_ERRORS.PAST_DATE_NOT_ALLOWED);
       }
     }
 
@@ -213,9 +207,10 @@ export class LeaveService {
           const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
             
           if (newSlots.some(s => oldSlots.includes(s))) {
-            throw new BadRequestException(
-              `Trùng lịch nghỉ với đơn đã được duyệt (${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType})`,
-            );
+            throw new BadRequestException({
+              ...LEAVE_ERRORS.SCHEDULE_CONFLICT,
+              details: `Trùng với đơn ${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType}`,
+            });
           }
         }
       }
@@ -236,11 +231,11 @@ export class LeaveService {
 
     if (dto.leaveType === LeaveType.PERSONAL_PAID || dto.leaveType === LeaveType.INSURANCE) {
       if (!dto.leaveSubType) {
-        throw new BadRequestException('leaveSubType là bắt buộc');
+        throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_REQUIRED);
       }
       const config = await this.getSubTypeLimit(dto.leaveType, dto.leaveSubType)
       if (!config) {
-        throw new BadRequestException('Không tìm thấy loại nghỉ');
+        throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_NOT_FOUND);
       }
       const limit = Number(config.limit);
 
@@ -252,19 +247,18 @@ export class LeaveService {
       );
       const remaining = limit - usedDays;
       if (leaveDays > remaining) {
-        throw new BadRequestException(
-          `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${dto.leaveSubType}. 
-          Không được vượt quá hạn mức.`
-        );
+        throw new BadRequestException({
+          ...LEAVE_ERRORS.SUBTYPE_QUOTA_EXCEEDED,
+          details: `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${dto.leaveSubType}`,
+        });
       }
     } else if (dto.leaveType === LeaveType.PAID) {
       const annualRemaining = Number(balance.annualLeaveTotal) - Number(balance.annualLeaveUsed);
       if (annualRemaining < leaveDays) {
-        throw new BadRequestException(
-          `Bạn chỉ còn ${annualRemaining} ngày phép năm. 
-          Không đủ cho ${leaveDays} ngày.
-          Vui lòng tạo đơn nghỉ không lương`
-        );
+        throw new BadRequestException({
+          ...LEAVE_ERRORS.INSUFFICIENT_ANNUAL_LEAVE,
+          details: `Bạn chỉ còn ${annualRemaining} ngày phép năm, không đủ cho ${leaveDays} ngày`,
+        });
       } else {
         paidDeduction = leaveDays;
       }
@@ -275,9 +269,10 @@ export class LeaveService {
       compensatoryInfo = { balance: compBalance };
       const requiredHours = leaveDays * 8;
       if(requiredHours > compBalance){
-        throw new BadRequestException(
-          `Bạn chỉ còn ${compBalance} giờ nghỉ bù, không đủ cho ${requiredHours} giờ yêu cầu`,
-        );
+        throw new BadRequestException({
+          ...LEAVE_ERRORS.INSUFFICIENT_COMPENSATORY,
+          details: `Bạn chỉ còn ${compBalance} giờ nghỉ bù, không đủ cho ${requiredHours} giờ yêu cầu`,
+        });
       }
     }
 
@@ -372,7 +367,7 @@ export class LeaveService {
   async getMyBalance(userId: number) {
     const currentYear = new Date().getFullYear();
     const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) throw new NotFoundException('Không tìm thấy nhân viên');
+    if (!user) throw new NotFoundException(LEAVE_ERRORS.EMPLOYEE_NOT_FOUND);
 
     const balance = await this.getOrCreateBalance(userId, currentYear);
     const annualRemaining =
@@ -401,20 +396,20 @@ export class LeaveService {
       where: { id: requestId },
       relations: ['user'],
     });
-    if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+    if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
     //lấy ra id người đang đăng nhập để kiểm tra quyền 
     const user = await this.userRepo.findOneBy({id: userId})
-    if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
+    if (!user) throw new NotFoundException(LEAVE_ERRORS.APPROVER_NOT_FOUND);
     if (
       user.role === UserRole.DEPARTMENT_LEAD &&
       leave.user.departmentName !== user.departmentName
     ) {
-      throw new ForbiddenException('Bạn chỉ có thể duyệt đơn của nhân viên trong phòng ban mình');
+      throw new ForbiddenException(LEAVE_ERRORS.APPROVE_OWN_DEPARTMENT_ONLY);
     }
 
     if (leave.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException('Đơn này không thể duyệt');
+      throw new BadRequestException(LEAVE_ERRORS.CANNOT_APPROVE);
     }
 
     
@@ -495,22 +490,22 @@ export class LeaveService {
     dto: RejectLeaveDto,
   ) {
     const user = await this.userRepo.findOneBy({ id: userId });
-    if (!user) throw new NotFoundException('Không tìm thấy người duyệt');
+    if (!user) throw new NotFoundException(LEAVE_ERRORS.APPROVER_NOT_FOUND);
 
     const leave = await this.leaveRequestRepo.findOne({
       where: { id: requestId },
       relations: ['user'],
     });
-    if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+    if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
     if (
       user.role === UserRole.DEPARTMENT_LEAD &&
       leave.user.departmentName !== user.departmentName
     ) {
-      throw new ForbiddenException('Bạn chỉ có thể từ chối đơn của nhân viên trong phòng ban mình');
+      throw new ForbiddenException(LEAVE_ERRORS.REJECT_OWN_DEPARTMENT_ONLY);
     }
 
     if (leave.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException('Đơn này không ở trạng thái chờ duyệt');
+      throw new BadRequestException(LEAVE_ERRORS.NOT_PENDING_STATUS);
     }
 
     leave.status = LeaveRequestStatus.REJECTED;
@@ -532,20 +527,20 @@ export class LeaveService {
       relations: ['attachments'], // để xóa file đính kèm nếu có
     });
 
-    if (!leaveRequest) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+    if (!leaveRequest) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
     if (leaveRequest.userId !== userId) {
-      throw new ForbiddenException('Bạn không có quyền hủy đơn này');
+      throw new ForbiddenException(LEAVE_ERRORS.CANCEL_OWN_ONLY);
     }
 
     if (
       leaveRequest.status !== LeaveRequestStatus.PENDING &&
       leaveRequest.status !== LeaveRequestStatus.APPROVED
     ) {
-      throw new BadRequestException('Không thể hủy đơn ở trạng thái này');
+      throw new BadRequestException(LEAVE_ERRORS.CANNOT_CANCEL);
     }
 
     if (leaveRequest.status === LeaveRequestStatus.APPROVED && !dto.cancelReason?.trim()) {
-      throw new BadRequestException('Cần nhập lý do khi hủy đơn đã được duyệt');
+      throw new BadRequestException(LEAVE_ERRORS.CANCEL_REASON_REQUIRED);
     }
 
     const currentYear = new Date().getFullYear();
@@ -607,19 +602,17 @@ export class LeaveService {
       where: { id: requestId },
       relations: ['user', 'attachments'],
     });
-    if (!leave) throw new NotFoundException('Không tìm thấy đơn nghỉ');
+    if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
     if (
       user.role === UserRole.EMPLOYEE &&
       leave.userId !== user.id
     ) {
-      throw new ForbiddenException('Bạn chỉ có thể cập nhật đơn của mình');
+      throw new ForbiddenException(LEAVE_ERRORS.ONLY_UPDATE_OWN);
     }
 
     if (leave.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException(
-        'Chỉ có thể cập nhật đơn ở trạng thái chờ duyệt',
-      );
+      throw new BadRequestException(LEAVE_ERRORS.ONLY_UPDATE_PENDING);
     }
     Object.assign(leave, dto);
     const startDate = new Date(leave.startDate);
@@ -627,9 +620,7 @@ export class LeaveService {
 
     //  Validate ngày
     if (startDate > endDate) {
-      throw new BadRequestException(
-        'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc',
-      );
+      throw new BadRequestException(LEAVE_ERRORS.INVALID_DATE_RANGE);
     }
 
     if (
@@ -637,9 +628,7 @@ export class LeaveService {
       leave.startHalfDayType === HalfDayType.AFTERNOON &&
       leave.endHalfDayType === HalfDayType.MORNING
     ) {
-      throw new BadRequestException(
-        'Buổi bắt đầu không thể sau buổi kết thúc trong cùng một ngày',
-      );
+      throw new BadRequestException(LEAVE_ERRORS.INVALID_HALF_DAY);
     }
     //  Check trùng lịch (loại trừ chính nó)
     const existingRequests = await this.leaveRequestRepo.find({
@@ -699,9 +688,10 @@ export class LeaveService {
           const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
           
           if (newSlots.some(s => oldSlots.includes(s))) {
-            throw new BadRequestException(
-              `Trùng lịch nghỉ với đơn đã được duyệt (${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType})`,
-            );
+            throw new BadRequestException({
+              ...LEAVE_ERRORS.SCHEDULE_CONFLICT,
+              details: `Trùng với đơn ${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType}`,
+            });
           }
         }
       }
@@ -732,7 +722,7 @@ export class LeaveService {
       leave.leaveType === LeaveType.INSURANCE
     ) {
       if (!leave.leaveSubType) {
-        throw new BadRequestException('leaveSubType là bắt buộc');
+        throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_REQUIRED);
       }
 
       const config = await this.getSubTypeLimit(
@@ -741,7 +731,7 @@ export class LeaveService {
       );
 
       if (!config) {
-        throw new BadRequestException('Không tìm thấy loại nghỉ');
+        throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_NOT_FOUND);
       }
 
       const limit = Number(config.limit);
@@ -757,9 +747,10 @@ export class LeaveService {
       const remaining = limit - usedDays;
 
       if (leaveDays > remaining) {
-        throw new BadRequestException(
-          `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${leave.leaveSubType}`,
-        );
+        throw new BadRequestException({
+          ...LEAVE_ERRORS.SUBTYPE_QUOTA_EXCEEDED,
+          details: `Bạn chỉ còn ${remaining} ngày cho loại nghỉ ${leave.leaveSubType}`,
+        });
       }
     }
 
@@ -769,9 +760,10 @@ export class LeaveService {
         Number(balance.annualLeaveUsed);
 
       if (annualRemaining < leaveDays) {
-        throw new BadRequestException(
-          `Bạn chỉ còn ${annualRemaining} ngày phép năm`,
-        );
+        throw new BadRequestException({
+          ...LEAVE_ERRORS.INSUFFICIENT_ANNUAL_LEAVE,
+          details: `Bạn chỉ còn ${annualRemaining} ngày phép năm`,
+        });
       }
 
       paidDeduction = leaveDays;
@@ -786,9 +778,7 @@ export class LeaveService {
       const requiredHours = leaveDays * 8;
 
       if (requiredHours > compBalance) {
-        throw new BadRequestException(
-          `Không đủ giờ nghỉ bù`,
-        );
+        throw new BadRequestException(LEAVE_ERRORS.INSUFFICIENT_COMPENSATORY);
       }
     }
 
@@ -804,9 +794,7 @@ export class LeaveService {
       const hasNewFiles = files?.length > 0;
 
       if (!hasOldFiles && !hasNewFiles) {
-        throw new BadRequestException(
-          'Nghỉ bảo hiểm bắt buộc phải đính kèm hồ sơ',
-        );
+        throw new BadRequestException(LEAVE_ERRORS.INSURANCE_REQUIRES_ATTACHMENT);
       }
     }
 
@@ -864,13 +852,13 @@ export class LeaveService {
       relations: ['user', 'approver', 'attachments'],
     });
     
-    if (!leave) throw new NotFoundException('Không tìm thấy đơn xin nghỉ');
+    if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
     if (
       user.role === UserRole.EMPLOYEE &&
       leave.userId !== user.id
     ) {
-      throw new ForbiddenException('Bạn chỉ có thể xem chi tiết đơn của mình');
+      throw new ForbiddenException(LEAVE_ERRORS.ONLY_VIEW_OWN);
     }
 
     const totalDays = this.calculateLeaveDays(
@@ -902,14 +890,14 @@ export class LeaveService {
     });
 
   if (!attachment) {
-    throw new NotFoundException('Không tìm thấy file');
+    throw new NotFoundException(LEAVE_ERRORS.ATTACHMENT_NOT_FOUND);
   }
 
   if (
     user.role === UserRole.EMPLOYEE &&
     attachment.leaveRequest.userId !== user.id
   ) {
-    throw new ForbiddenException('Bạn không có quyền xem file này');
+    throw new ForbiddenException(LEAVE_ERRORS.VIEW_ATTACHMENT_FORBIDDEN);
   }
 
     const fileStream = await this.storageService.getFileStream(attachment.fileKey);
@@ -952,7 +940,7 @@ export class LeaveService {
     }
 
     const user = await this.userRepo.findOne({where:{id: userId}})
-    if (!user) throw new NotFoundException('Không tìm thấy người dùng')
+    if (!user) throw new NotFoundException(LEAVE_ERRORS.USER_NOT_FOUND)
     balance = await this.leaveAccrualService.backfillLeaveForUser(user);
 
     return balance;
@@ -1012,25 +1000,19 @@ export class LeaveService {
       leaveType === LeaveType.COMPENSATORY
     ) {
     if (leaveSubType) {
-      throw new BadRequestException(
-        `${leaveType} không được có leaveSubType`,
-      );
+      throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_NOT_ALLOWED);
     }
     return;
     }
     if (!leaveSubType) {
-      throw new BadRequestException(
-        `leaveSubType là bắt buộc cho ${leaveType}`,
-      );
+      throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_REQUIRED);
     }
     const config = await this.getSubTypeLimit(
       leaveType,
       leaveSubType,
     );
     if (!config) {
-      throw new BadRequestException(
-        `leaveSubType ${leaveSubType} không tồn tại trong hệ thống`,
-      );
+      throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_INVALID);
     }
   }
 }
