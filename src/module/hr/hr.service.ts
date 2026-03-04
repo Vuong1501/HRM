@@ -8,6 +8,8 @@ import { randomUUID } from 'crypto';
 import { MailService } from '../mail/mail.service';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { InviteResultDto } from './dto/invite-result.dto';
+import { ConfigService } from '@nestjs/config';
+
 
 @Injectable()
 export class HrService {
@@ -15,6 +17,7 @@ export class HrService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private mailService: MailService,
+    private configService: ConfigService
   ) {}
 
   async invite(userDto: InviteDto) {
@@ -39,8 +42,8 @@ export class HrService {
     });
     const user = await this.userRepository.save(entity);
 
-    const link = `http://localhost:3000/invite/accept?token=${token}`;
-    // const link = `https://undemonstrated-kinley-mischievously.ngrok-free.dev/invite/accept?token=${token}`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    const link = `${frontendUrl}/invite/accept?token=${token}`;
 
     await this.mailService.sendInvite(user.email, link);
 
@@ -91,7 +94,8 @@ export class HrService {
         const user = await this.userRepository.save(entity);
 
         // Gửi email
-        const link = `http://localhost:3000/invite/accept?token=${token}`;
+        const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+        const link = `${frontendUrl}/invite/accept?token=${token}`;
         await this.mailService.sendInvite(user.email, link);
 
         result.success.push(userDto);
