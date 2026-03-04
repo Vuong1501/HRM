@@ -22,10 +22,7 @@ export class LeaveAttachment {
   originalName: string;
 
   @Column()
-  fileName: string;
-
-  @Column()
-  filePath: string;
+  fileKey: string;
 
   @Column()
   mimeType: string;

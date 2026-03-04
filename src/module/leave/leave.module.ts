@@ -13,9 +13,10 @@ import { LeaveConfig } from './entities/leave-config.entity';
 import { MailModule } from '../mail/mail.module';
 import { LeaveAttachment } from './entities/leave_attachments.entity';
 import { LeaveRequestQueryBuilder } from './leave-request.query-builder';
+import { StorageModule } from 'src/common/storage/storage.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LeaveRequest, LeaveBalance, User, LeaveConfig, LeaveAttachment]), CaslModule, MailModule],
+  imports: [TypeOrmModule.forFeature([LeaveRequest, LeaveBalance, User, LeaveConfig, LeaveAttachment]), CaslModule, MailModule, StorageModule],
   controllers: [LeaveController],
   providers: [LeaveService, LeaveAccrualService, LeaveSeedService, LeaveRequestQueryBuilder],
   exports: [LeaveService, LeaveAccrualService],

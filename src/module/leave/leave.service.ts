@@ -32,6 +32,7 @@ import { ForbiddenError } from '@casl/ability';
 import { Action } from 'src/common/enums/action.enum';
 import { join } from 'path';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
+import { StorageService } from 'src/common/storage/storage.service';
 
 @Injectable()
 export class LeaveService {
@@ -56,6 +57,7 @@ export class LeaveService {
     private leaveAccrualService: LeaveAccrualService,
     private mailService: MailService,
     private dataSource: DataSource,
+    private storageService: StorageService
   ) {}
 
   async getLeaveList(user: User, query: LeaveListQueryDto) {
@@ -307,14 +309,17 @@ export class LeaveService {
 
       // lưu file nếu có file
       if (files && files.length > 0) {
-        const attachments = files.map((file) =>
-          queryRunner.manager.create(LeaveAttachment, {
-            leaveRequestId: savedLeave.id,
-            originalName: file.originalname,
-            fileName: file.filename,
-            filePath: file.path,
-            size: file.size,
-            mimeType: file.mimetype,
+        const attachments = await Promise.all(
+          files.map(async (file) => {
+            const fileKey = await this.storageService.uploadFile(file, 'leave');  // ← upload lên MinIO
+
+            return queryRunner.manager.create(LeaveAttachment, {
+              leaveRequestId: savedLeave.id,
+              originalName: file.originalname,
+              fileKey,          
+              size: file.size,
+              mimeType: file.mimetype,
+            });
           }),
         );
         await queryRunner.manager.save(attachments);
@@ -356,17 +361,7 @@ export class LeaveService {
       console.error('Create leave request failed:', error);
       // rollbakc db
       await queryRunner.rollbackTransaction();
-
-      //xóa file nếu có
-      if (files && files.length > 0) {
-      await Promise.all(
-        files.map((file) =>
-          unlink(file.path).catch(() => {}),
-        ),
-      );
-    }
-
-    throw error;
+      throw error;
     }
   }
   // lấy đơn xin nghỉ của mình
@@ -582,11 +577,11 @@ export class LeaveService {
         await manager.save(balance);
       }
 
-      // Xóa file đính kèm nếu có
+    // Xóa file trên MinIO thay vì disk
       if (leaveRequest.attachments?.length > 0) {
         await Promise.all(
-          leaveRequest.attachments.map((file) =>
-            unlink(file.filePath).catch(() => {}),
+          leaveRequest.attachments.map((att) =>
+            this.storageService.deleteFile(att.fileKey).catch(() => {}),
           ),
         );
         await manager.delete(LeaveAttachment, { leaveRequestId: leaveRequest.id });
@@ -826,18 +821,30 @@ export class LeaveService {
       }
 
       // lưu file mới
-      if (files?.length) {
-        const attachments = files.map((file) =>
-          queryRunner.manager.create(LeaveAttachment, {
-            leaveRequestId: leave.id,
-            originalName: file.originalname,
-            fileName: file.filename,
-            filePath: file.path,
-            size: file.size,
-            mimeType: file.mimetype,
+      if (files && files.length > 0) {
+        //xóa file cũ
+        if (leave.attachments?.length) {
+          await Promise.all(
+            leave.attachments.map((att) =>
+              this.storageService.deleteFile(att.fileKey).catch(() => {}),
+            ),
+          );
+          await queryRunner.manager.delete(LeaveAttachment, { leaveRequestId: leave.id });
+        }
+        // lưu file mới
+        const attachments = await Promise.all(
+          files.map(async (file) => {
+            const fileKey = await this.storageService.uploadFile(file, 'leave');
+
+            return queryRunner.manager.create(LeaveAttachment, {
+              leaveRequestId: leave.id, 
+              originalName: file.originalname,
+              fileKey,         
+              size: file.size,
+              mimeType: file.mimetype,
+            });
           }),
         );
-
         await queryRunner.manager.save(attachments);
       }
 
@@ -849,13 +856,6 @@ export class LeaveService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      if (files && files.length > 0) {
-        await Promise.all(
-          files.map((file) =>
-            unlink(file.path).catch(() => {}),
-          ),
-        );
-      }
       throw error;
     } finally {
       await queryRunner.release();
@@ -891,8 +891,7 @@ export class LeaveService {
       attachments:
       leave.attachments?.map((att) => ({
         id: att.id,
-        originalName: att.originalName,
-        fileName: att.fileName,
+        originalName: att.originalName
       })) ?? [],
     };
   }
@@ -912,24 +911,16 @@ export class LeaveService {
     const ability = this.caslAbilityFactory.createForUser(user);
     ForbiddenError.from(ability).throwUnlessCan(Action.Read, attachment.leaveRequest);
 
-    const filePath = join(
-      process.cwd(),
-      'uploads',
-      'leave',
-      attachment.fileName,
-    );
+    const fileStream = await this.storageService.getFileStream(attachment.fileKey);
 
     //  Set header để xem inline, không tải xuống
     res.setHeader('Content-Type', attachment.mimeType);
-    const encodedFileName = encodeURIComponent(
-      attachment.originalName,
-    );
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${encodedFileName}"`,
+      `inline; filename="${attachment.originalName}"`,
     );
 
-    return res.sendFile(filePath);
+    fileStream.pipe(res); 
   }
 
   // Tính số ngày nghỉ (startDate → endDate, inclusive)
