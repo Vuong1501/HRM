@@ -1,7 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { InviteDto } from './dto/invite.dto';
 import { BulkInviteDto } from './dto/bulk-invite.dto';
 import { randomUUID } from 'crypto';
@@ -17,7 +17,8 @@ export class HrService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private mailService: MailService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    private dataSource: DataSource
   ) {}
 
   async invite(userDto: InviteDto) {
@@ -26,59 +27,62 @@ export class HrService {
     });
     if (existed) throw new ConflictException('User existed');
     const token = randomUUID();
-    const entity = this.userRepository.create({
-      email: userDto.email,
-      name: userDto.name,
-      role: userDto.role,
-      status: UserStatus.INVITED,
-      inviteToken: token,
-
-      dateOfBirth: new Date(userDto.dateOfBirth),
-      departmentName: userDto.departmentName,
-      address: userDto.address,
-      sex: userDto.sex,
-      phoneNumber: userDto.phoneNumber,
-      startDate: new Date(userDto.startDate),
-    });
-    const user = await this.userRepository.save(entity);
-
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
     const link = `${frontendUrl}/invite/accept?token=${token}`;
 
-    await this.mailService.sendInvite(user.email, link);
+    await this.dataSource.transaction(async (manager) => {
+      const entity = manager.create(User, {
+        email: userDto.email,
+        name: userDto.name,
+        role: userDto.role,
+        status: UserStatus.INVITED,
+        inviteToken: token,
 
+        dateOfBirth: new Date(userDto.dateOfBirth),
+        departmentName: userDto.departmentName,
+        address: userDto.address,
+        sex: userDto.sex,
+        phoneNumber: userDto.phoneNumber,
+        startDate: new Date(userDto.startDate),
+      });
+      const user = await manager.save(entity);
+      // gửi mail
+      await this.mailService.sendMailWithRetry(
+        () => this.mailService.sendInvite(user.email, link),
+        'SEND_INVITE_FAILED',
+      );
+    })
     return {
       success: true,
     };
   }
 
-  async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
-    const result: InviteResultDto = {
-      success: [],
-      failed: [],
-    };
+async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
+  const result: InviteResultDto = { success: [], failed: [] };
 
-    // lấy danh sách user đã có
-    const emails = dto.users.map((u) => u.email);
-    const existingUsers = await this.userRepository.find({
-      where: emails.map((email) => ({ email })),
-      select: ['email'],
-    });
-    const existingEmails = new Set(existingUsers.map((u) => u.email));
+  const emails = dto.users.map((u) => u.email);
+  const existingUsers = await this.userRepository.find({
+    where: emails.map((email) => ({ email })),
+    select: ['email'],
+  });
+  const existingEmails = new Set(existingUsers.map((u) => u.email));
 
+  const queryRunner = this.dataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+
+  try {
     for (const userDto of dto.users) {
+      if (existingEmails.has(userDto.email)) {
+        result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
+        continue;
+      }
+
+      await queryRunner.query('SAVEPOINT user_savepoint');
+
       try {
-        // Kiểm tra email đã tồn tại
-        if (existingEmails.has(userDto.email)) {
-          result.failed.push({
-            user: userDto,
-            reason: 'Email đã tồn tại trong hệ thống',
-          });
-          continue;
-        }
-        // Tạo user mới
         const token = randomUUID();
-        const entity = this.userRepository.create({
+        const entity = queryRunner.manager.create(User, {
           email: userDto.email,
           name: userDto.name,
           role: userDto.role,
@@ -91,29 +95,39 @@ export class HrService {
           phoneNumber: userDto.phoneNumber,
           startDate: new Date(userDto.startDate),
         });
-        const user = await this.userRepository.save(entity);
 
-        // Gửi email
-        const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-        const link = `${frontendUrl}/invite/accept?token=${token}`;
-        await this.mailService.sendInvite(user.email, link);
+        const user = await queryRunner.manager.save(entity);
 
+        const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
+        const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
+
+        await this.mailService.sendMailWithRetry(
+          () => this.mailService.sendInvite(user.email, inviteLink),
+          'SEND_INVITE_FAILED',
+        );
+
+        await queryRunner.commitTransaction();
         result.success.push(userDto);
+
       } catch (error) {
-        let reason = 'Lỗi không xác định';
-
-        if (error instanceof Error) {
-          reason = error.message;
-        }
-
+        await queryRunner.rollbackTransaction();
         result.failed.push({
           user: userDto,
-          reason,
+          reason: error instanceof Error ? error.message : 'Lỗi không xác định',
         });
       }
     }
+
+    await queryRunner.commitTransaction();
     return result;
+
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw error;
+  } finally {
+    await queryRunner.release();
   }
+}
 
   async previewBulkInvite(users: InviteDto[], rowErrors: any[]) {
     const emails = users.map((u) => u.email);

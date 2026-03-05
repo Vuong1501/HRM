@@ -316,29 +316,27 @@ export class LeaveService {
         );
         await queryRunner.manager.save(attachments);
       }
-      await queryRunner.commitTransaction();
-
-      // commit xong mới gửi mail
-      try {
-        const lead = await this.userRepo.findOne({
-        where : {
-          departmentName: user.departmentName,
-          role: UserRole.DEPARTMENT_LEAD
-        }
-      })
+    const lead = await this.userRepo.findOne({
+      where : {
+        departmentName: user.departmentName,
+        role: UserRole.DEPARTMENT_LEAD
+      }
+    })
     
-      if(lead){
-        await this.mailService.sendLeaveRequestNotification(
+    if(lead){
+      await this.mailService.sendMailWithRetry(
+        () => this.mailService.sendLeaveRequestNotification(
           lead.email,
           user.name,
           user.departmentName,
           startDate,
           endDate,
-        );
-      }
-      } catch (mailError) {
-        console.error('Send mail failed:', mailError);
-      }
+        ),
+        'SEND_LEAVE_NOTIFICATION_FAILED',
+      );
+    }
+    await queryRunner.commitTransaction();
+      
       return {
         message: 'Tạo đơn xin nghỉ thành công',
         data: savedLeave,
@@ -412,7 +410,6 @@ export class LeaveService {
       throw new BadRequestException(LEAVE_ERRORS.CANNOT_APPROVE);
     }
 
-    
     // lấy hoặc tạo balance
     const currentYear = new Date().getFullYear();
     const balance = await this.getOrCreateBalance(leave.userId, currentYear);
@@ -453,34 +450,30 @@ export class LeaveService {
 
       await manager.save(balance);
 
+      // gửi mail
+      const hrs = await this.userRepo.find({
+        where: { role: UserRole.HR },
+      });
+
+      await Promise.all(
+        hrs.map((hr) =>
+          this.mailService.sendMailWithRetry(
+            () => this.mailService.sendLeaveApprovedNotification(
+              hr.email,
+              leave.user.name,
+              new Date(leave.startDate),
+              new Date(leave.endDate),
+            ),
+            'SEND_LEAVE_APPROVED_FAILED',
+          ),
+        ),
+      );
+
       return {
         message: 'Duyệt đơn nghỉ thành công',
         ...(warning && { warning }),
       };
     })
-    // gửi mail
-    try {
-      const hrs = await this.userRepo.find({
-      where: { role: UserRole.HR },
-    });
-
-    await Promise.all(
-      hrs.map((hr) =>
-        this.mailService.sendLeaveApprovedNotification(
-          hr.email,
-          leave.user.name,
-          new Date(leave.startDate),
-          new Date(leave.endDate),
-        ),
-      ),
-    );
-    } catch (error) {
-      console.error('Send mail failed:', error);
-    }
-    return {
-      message: 'Duyệt đơn nghỉ thành công',
-      ...(warning && { warning }),
-    };
   }
 
   //Từ chối đơn nghỉ

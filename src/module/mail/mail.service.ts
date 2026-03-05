@@ -1,10 +1,47 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import dayjs from 'dayjs';
+import { MAIL_ERRORS } from './mail.errors';
+import { Logger } from '@nestjs/common';
+
+const MAIL_MAX_RETRIES = 3;
+const MAIL_RETRY_DELAY_MS = 2000;
 
 @Injectable()
 export class MailService {
-  constructor(private readonly mailerService: MailerService) {}
+  private readonly logger = new Logger(MailService.name);
+  constructor(
+    private readonly mailerService: MailerService,
+  ) {}
+
+  async sendMailWithRetry(
+    sendFn: () => Promise<void>,
+    errorCode: keyof typeof MAIL_ERRORS,
+    maxRetries: number = MAIL_MAX_RETRIES,
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await sendFn();
+      return;
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries;
+
+      this.logger.warn(
+        `[${MAIL_ERRORS[errorCode].code}] attempt ${attempt}/${maxRetries} failed: ${error.message}`
+      );
+
+      if (isLastAttempt) {
+        this.logger.error(
+          `[${MAIL_ERRORS[errorCode].code}] failed after ${maxRetries} retries`
+        );
+        throw new InternalServerErrorException(MAIL_ERRORS[errorCode]);
+      }
+
+      const delayMs = MAIL_RETRY_DELAY_MS * attempt;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  }
 
   // hr gửi mail mời nhân viên mới
   async sendInvite(email: string, link: string): Promise<void> {
