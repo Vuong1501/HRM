@@ -9,6 +9,7 @@ import { MailService } from '../mail/mail.service';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { InviteResultDto } from './dto/invite-result.dto';
 import { ConfigService } from '@nestjs/config';
+import dayjs from 'dayjs';
 
 
 @Injectable()
@@ -38,12 +39,12 @@ export class HrService {
         status: UserStatus.INVITED,
         inviteToken: token,
 
-        dateOfBirth: new Date(userDto.dateOfBirth),
+        dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
         departmentName: userDto.departmentName,
         address: userDto.address,
         sex: userDto.sex,
         phoneNumber: userDto.phoneNumber,
-        startDate: new Date(userDto.startDate),
+        startDate: dayjs(userDto.startDate).toDate(),
       });
       const user = await manager.save(entity);
       // gửi mail
@@ -88,12 +89,12 @@ async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
           role: userDto.role,
           status: UserStatus.INVITED,
           inviteToken: token,
-          dateOfBirth: new Date(userDto.dateOfBirth),
+          dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
           departmentName: userDto.departmentName,
           address: userDto.address,
           sex: userDto.sex,
           phoneNumber: userDto.phoneNumber,
-          startDate: new Date(userDto.startDate),
+          startDate: dayjs(userDto.startDate).toDate(),
         });
 
         const user = await queryRunner.manager.save(entity);

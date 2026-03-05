@@ -6,6 +6,7 @@ import { LeaveBalance } from './entities/leave-balance.entity';
 import { User } from '../users/entities/user.entity';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class LeaveAccrualService {
@@ -35,11 +36,11 @@ export class LeaveAccrualService {
    */
   @Cron('5 0 1 * *') // 00:05 ngày 1 hàng tháng
   async accrueMonthlyLeave() {
-    const now = new Date();
-    const currentYear = now.getFullYear();
+    const now = dayjs();
+    const currentYear = now.year();
 
     this.logger.log(
-      `Bắt đầu cộng phép tháng ${now.getMonth() + 1}/${currentYear}`,
+      `Bắt đầu cộng phép tháng ${now.month() + 1}/${currentYear}`,
     );
 
     // Lấy tất cả nhân viên đang hoạt động (PROBATION + OFFICIAL)
@@ -51,7 +52,7 @@ export class LeaveAccrualService {
         types: [EmploymentType.PROBATION, EmploymentType.OFFICIAL],
       })
       .andWhere('u.startDate IS NOT NULL')
-      .andWhere('u.startDate <= :now', { now })
+      .andWhere('u.startDate <= :now', { now: now.toDate() })
       .getMany();
 
     this.logger.log(
@@ -119,22 +120,22 @@ export class LeaveAccrualService {
       throw new Error('Nhân viên chưa có startDate');
     }
 
-    const startDate = new Date(user.startDate);
-    const now = new Date();
-    const currentYear = now.getFullYear();
+    const startDate = dayjs(user.startDate);
+    const now = dayjs();
+    const currentYear = now.year();
 
     // Kiểm tra nhân viên có startDate hợp lệ không
-    if (startDate > now) {
+    if (startDate.isAfter(now)) {
       throw new Error('startDate không được là ngày trong tương lai');
     }
 
     // Tháng bắt đầu tính trong năm hiện tại
     // Nếu startDate trước năm nay thì từ tháng 1
     const firstMonthInYear =
-      startDate.getFullYear() < currentYear ? 0 : startDate.getMonth();
+      startDate.year() < currentYear ? 0 : startDate.month();
 
     // Tháng hiện tại (0-index)
-    const currentMonth = now.getMonth();
+    const currentMonth = now.month();
 
     // Số tháng cần cộng = (currentMonth - firstMonthInYear + 1), tối đa 12
     const monthsToAccrue = Math.min(

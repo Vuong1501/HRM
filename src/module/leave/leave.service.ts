@@ -28,6 +28,7 @@ import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { StorageService } from 'src/common/storage/storage.service';
 import { LEAVE_ERRORS } from './leave.errors';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class LeaveService {
@@ -123,31 +124,23 @@ export class LeaveService {
       throw new ForbiddenException(LEAVE_ERRORS.NOT_OFFICIAL_EMPLOYEE);
     }
 
-    const startDate = new Date(dto.startDate);
-    const endDate = new Date(dto.endDate);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const startDate = dayjs(dto.startDate).startOf('day');
+    const endDate = dayjs(dto.endDate).endOf('day');
+    const today = dayjs().startOf('day');
 
     // kiểm tra ngày bắt đầu và kết thúc
-    if (startDate > endDate) {
+    if (startDate.isAfter(endDate)) {
       throw new BadRequestException(LEAVE_ERRORS.INVALID_DATE_RANGE);
     }
 
-    if (startDate.getTime() === endDate.getTime()) {
-      if (dto.startHalfDayType === HalfDayType.AFTERNOON && dto.endHalfDayType === HalfDayType.MORNING) {
-        throw new BadRequestException(LEAVE_ERRORS.INVALID_HALF_DAY);
-      }
+    if (startDate.isSame(endDate) && dto.startHalfDayType === HalfDayType.AFTERNOON && dto.endHalfDayType === HalfDayType.MORNING) {
+      throw new BadRequestException(LEAVE_ERRORS.INVALID_HALF_DAY);
     }
-    if (startDate < today) {
-      // Cho phép ngày trong quá khứ nếu cùng tháng hiện tại
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
-
-      const startMonth = startDate.getMonth();
-      const startYear = startDate.getFullYear();
-
-      if (startMonth !== currentMonth || startYear !== currentYear) {
+    if (startDate.isBefore(today, 'day')) {
+      if (
+        startDate.month() !== today.month() ||
+        startDate.year() !== today.year()
+      ) {
         throw new BadRequestException(LEAVE_ERRORS.PAST_DATE_NOT_ALLOWED);
       }
     }
@@ -162,24 +155,25 @@ export class LeaveService {
 
     
     for (const req of existingRequests) {
-      const reqStart = new Date(req.startDate);
-      const reqEnd = new Date(req.endDate);
-
-      reqStart.setHours(0,0,0,0);
-      reqEnd.setHours(0,0,0,0);
-
-      const newStart = new Date(startDate);
-      const newEnd = new Date(endDate);
-
-      newStart.setHours(0,0,0,0);
-      newEnd.setHours(0,0,0,0);
+      // lấy ra ngày bắt đầu và kết thúc của đơn cũ
+      const reqStart = dayjs(req.startDate).startOf('day');
+      const reqEnd = dayjs(req.endDate).startOf('day');
 
       // Giao nhau về ngày
-      if (newStart <= reqEnd && newEnd >= reqStart) {
+      if (
+        (startDate.isBefore(reqEnd) || startDate.isSame(reqEnd)) &&
+        (endDate.isAfter(reqStart) || endDate.isSame(reqStart))
+      ) {
         //lấy các buổi nghỉ trong một ngày cụ thể
-        const getSlots = (date: Date, dStart: Date, dEnd: Date, sHalf: HalfDayType, eHalf: HalfDayType) => {
-          const isStartDay = date.getTime() === dStart.getTime();
-          const isEndDay = date.getTime() === dEnd.getTime();
+        const getSlots = (
+          date: dayjs.Dayjs, 
+          dStart: dayjs.Dayjs, 
+          dEnd: dayjs.Dayjs, 
+          sHalf: HalfDayType, 
+          eHalf: HalfDayType
+        ) => {
+          const isStartDay = date.isSame(dStart, 'day');
+          const isEndDay = date.isSame(dEnd, 'day');
             
           if (isStartDay && isEndDay) {
             if (sHalf === HalfDayType.MORNING && eHalf === HalfDayType.MORNING) return [1];
@@ -199,17 +193,17 @@ export class LeaveService {
         };
 
         // Tìm các ngày giao nhau và kiểm tra xem có buổi nào bị trùng không
-        const overlapStart = new Date(Math.max(newStart.getTime(), reqStart.getTime()));
-        const overlapEnd = new Date(Math.min(newEnd.getTime(), reqEnd.getTime()));
+        const overlapStart = startDate.isAfter(reqStart) ? startDate : reqStart;
+        const overlapEnd = endDate.isBefore(reqEnd) ? endDate : reqEnd;
 
-        for (let d = new Date(overlapStart); d <= overlapEnd; d.setDate(d.getDate() + 1)) {
-          const newSlots = getSlots(d, newStart, newEnd, dto.startHalfDayType, dto.endHalfDayType);
+        for (let d = overlapStart; d.isBefore(overlapEnd) || d.isSame(overlapEnd); d.add(1, 'day')) {
+          const newSlots = getSlots(d, startDate, endDate, dto.startHalfDayType, dto.endHalfDayType);
           const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
             
           if (newSlots.some(s => oldSlots.includes(s))) {
             throw new BadRequestException({
               ...LEAVE_ERRORS.SCHEDULE_CONFLICT,
-              details: `Trùng với đơn ${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType}`,
+              details: `Trùng với đơn ${reqStart.format('DD/MM/YYYY')} ${req.startHalfDayType} - ${reqEnd.format('DD/MM/YYYY')} ${req.endHalfDayType}`,
             });
           }
         }
@@ -217,8 +211,8 @@ export class LeaveService {
     }
 
     // Tính số ngày nghỉ
-    const leaveDays = this.calculateLeaveDays(startDate, endDate, dto.startHalfDayType, dto.endHalfDayType);
-    const currentYear = today.getFullYear();
+    const leaveDays = this.calculateLeaveDays(startDate.toDate(), endDate.toDate(), dto.startHalfDayType, dto.endHalfDayType);
+    const currentYear = today.year();
 
     // Lấy hoặc tạo quỹ nghỉ
     let balance = await this.getOrCreateBalance(userId, currentYear);
@@ -242,8 +236,8 @@ export class LeaveService {
       const usedDays = await this.getUsedDaysForSubType(
         userId, 
         dto.leaveSubType, 
-        startDate.getFullYear(),
-        config.isPerMonth ? startDate.getMonth() : undefined
+        startDate.year(),
+        config.isPerMonth ? startDate.month() : undefined
       );
       const remaining = limit - usedDays;
       if (leaveDays > remaining) {
@@ -288,8 +282,8 @@ export class LeaveService {
         userId,
         leaveType: dto.leaveType,
         leaveSubType: dto.leaveSubType || null,
-        startDate,
-        endDate,
+        startDate: startDate.toDate(),
+        endDate: endDate.toDate(),
         startHalfDayType: dto.startHalfDayType,
         endHalfDayType: dto.endHalfDayType,
         reason: dto.reason,
@@ -329,8 +323,8 @@ export class LeaveService {
           lead.email,
           user.name,
           user.departmentName,
-          startDate,
-          endDate,
+          startDate.toDate(),
+          endDate.toDate(),
         ),
         'SEND_LEAVE_NOTIFICATION_FAILED',
       );
@@ -348,7 +342,6 @@ export class LeaveService {
         },
       };
     } catch (error) {
-      console.error('Create leave request failed:', error);
       // rollbakc db
       await queryRunner.rollbackTransaction();
       throw error;
@@ -363,7 +356,7 @@ export class LeaveService {
    * Xem số phép còn lại
    */
   async getMyBalance(userId: number) {
-    const currentYear = new Date().getFullYear();
+    const currentYear = dayjs().year();
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException(LEAVE_ERRORS.EMPLOYEE_NOT_FOUND);
 
@@ -411,27 +404,28 @@ export class LeaveService {
     }
 
     // lấy hoặc tạo balance
-    const currentYear = new Date().getFullYear();
+    const currentYear = dayjs().year();
     const balance = await this.getOrCreateBalance(leave.userId, currentYear);
     let warning: string | undefined;
     if((leave.leaveType === LeaveType.UNPAID) && Number(balance.unpaidLeaveUsed) >= 30) {
         warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay.`;
     }
 
-
     await this.dataSource.transaction(async (manager) => {
 
       // cập nhật trạng thái đơn
       leave.status = LeaveRequestStatus.APPROVED;
       leave.approverId = user.id;
-      leave.approvedAt = new Date();
+      leave.approvedAt = dayjs().toDate();
 
       await manager.save(leave);
 
+      const startDate = dayjs(leave.startDate).startOf('day');
+      const endDate = dayjs(leave.endDate).startOf('day');
       if (leave.leaveType === LeaveType.COMPENSATORY) {
         const leaveDays = this.calculateLeaveDays(
-          new Date(leave.startDate),
-          new Date(leave.endDate),
+          startDate.toDate(),
+          endDate.toDate(),
           leave.startHalfDayType,
           leave.endHalfDayType,
         );
@@ -461,8 +455,8 @@ export class LeaveService {
             () => this.mailService.sendLeaveApprovedNotification(
               hr.email,
               leave.user.name,
-              new Date(leave.startDate),
-              new Date(leave.endDate),
+              startDate.toDate(),
+              endDate.toDate(),
             ),
             'SEND_LEAVE_APPROVED_FAILED',
           ),
@@ -536,7 +530,7 @@ export class LeaveService {
       throw new BadRequestException(LEAVE_ERRORS.CANCEL_REASON_REQUIRED);
     }
 
-    const currentYear = new Date().getFullYear();
+    const currentYear = dayjs().year();
     const balance = leaveRequest.status === LeaveRequestStatus.APPROVED
       ? await this.getOrCreateBalance(leaveRequest.userId, currentYear)
       : null;
@@ -544,10 +538,12 @@ export class LeaveService {
     await this.dataSource.transaction(async (manager) => {
 
       if (leaveRequest.status === LeaveRequestStatus.APPROVED && balance) {
+        const startDate = dayjs(leaveRequest.startDate).startOf('day');
+        const endDate = dayjs(leaveRequest.endDate).startOf('day');
         if (leaveRequest.leaveType === LeaveType.COMPENSATORY) {
           const leaveDays = this.calculateLeaveDays(
-            new Date(leaveRequest.startDate),
-            new Date(leaveRequest.endDate),
+            startDate.toDate(),
+            endDate.toDate(),
             leaveRequest.startHalfDayType,
             leaveRequest.endHalfDayType,
           );
@@ -608,16 +604,16 @@ export class LeaveService {
       throw new BadRequestException(LEAVE_ERRORS.ONLY_UPDATE_PENDING);
     }
     Object.assign(leave, dto);
-    const startDate = new Date(leave.startDate);
-    const endDate = new Date(leave.endDate);
+    const startDate = dayjs(leave.startDate).startOf('day');
+    const endDate = dayjs(leave.endDate).startOf('day');
 
     //  Validate ngày
-    if (startDate > endDate) {
+    if (startDate.isAfter(endDate)) {
       throw new BadRequestException(LEAVE_ERRORS.INVALID_DATE_RANGE);
     }
 
     if (
-      startDate.getTime() === endDate.getTime() &&
+      startDate.isSame(endDate, 'day') &&
       leave.startHalfDayType === HalfDayType.AFTERNOON &&
       leave.endHalfDayType === HalfDayType.MORNING
     ) {
@@ -636,29 +632,28 @@ export class LeaveService {
     });
 
     for (const req of existingRequests) {
-      const reqStart = new Date(req.startDate);
-      const reqEnd = new Date(req.endDate);
-
-      reqStart.setHours(0,0,0,0);
-      reqEnd.setHours(0,0,0,0);
-
-      const newStart = new Date(startDate);
-      const newEnd = new Date(endDate);
-
-      newStart.setHours(0,0,0,0);
-      newEnd.setHours(0,0,0,0);
+      const reqStart = dayjs(req.startDate).startOf('day');
+      const reqEnd = dayjs(req.endDate).startOf('day');
 
       // Giao nhau về ngày
-      if (newStart <= reqEnd && newEnd >= reqStart) {
+      if (
+        (startDate.isBefore(reqEnd) || startDate.isSame(reqEnd)) &&
+        (endDate.isAfter(reqStart) || endDate.isSame(reqStart))
+      ) {
         //lấy các buổi nghỉ trong một ngày cụ thể
-        const getSlots = (date: Date, dStart: Date, dEnd: Date, sHalf: HalfDayType, eHalf: HalfDayType) => {
-          const isStartDay = date.getTime() === dStart.getTime();
-          const isEndDay = date.getTime() === dEnd.getTime();
+        const getSlots = (
+          date: dayjs.Dayjs, 
+          dStart: dayjs.Dayjs, 
+          dEnd: dayjs.Dayjs, 
+          sHalf: HalfDayType, 
+          eHalf: HalfDayType
+        ) => {
+          const isStartDay = date.isSame(dStart, 'day');
+          const isEndDay = date.isSame(dEnd, 'day');
           
           if (isStartDay && isEndDay) {
             if (sHalf === HalfDayType.MORNING && eHalf === HalfDayType.MORNING) return [1];
             if (sHalf === HalfDayType.AFTERNOON && eHalf === HalfDayType.AFTERNOON) return [2];
-            // if (sHalf === HalfDayType.MORNING || eHalf === HalfDayType.AFTERNOON) return [1, 2];
             return [1, 2]; // MORNING -> AFTERNOON
           }
           if (isStartDay) {
@@ -673,17 +668,21 @@ export class LeaveService {
         };
 
         // Tìm các ngày giao nhau và kiểm tra xem có buổi nào bị trùng không
-        const overlapStart = new Date(Math.max(newStart.getTime(), reqStart.getTime()));
-        const overlapEnd = new Date(Math.min(newEnd.getTime(), reqEnd.getTime()));
+        const overlapStart = startDate.isAfter(reqStart) ? startDate : reqStart;
+        const overlapEnd = endDate.isBefore(reqEnd) ? endDate : reqEnd;
 
-        for (let d = new Date(overlapStart); d <= overlapEnd; d.setDate(d.getDate() + 1)) {
-          const newSlots = getSlots(d, newStart, newEnd, leave.startHalfDayType, leave.endHalfDayType);
+        for (
+          let d = overlapStart;
+          d.isBefore(overlapEnd) || d.isSame(overlapEnd); 
+          d = d.add(1, 'day')
+        ) {
+          const newSlots = getSlots(d, startDate, endDate, leave.startHalfDayType, leave.endHalfDayType);
           const oldSlots = getSlots(d, reqStart, reqEnd, req.startHalfDayType, req.endHalfDayType);
           
           if (newSlots.some(s => oldSlots.includes(s))) {
             throw new BadRequestException({
               ...LEAVE_ERRORS.SCHEDULE_CONFLICT,
-              details: `Trùng với đơn ${req.startDate} ${req.startHalfDayType} - ${req.endDate} ${req.endHalfDayType}`,
+              details: `Trùng với đơn ${reqStart.format('DD/MM/YYYY')} ${req.startHalfDayType} - ${reqEnd.format('DD/MM/YYYY')} ${req.endHalfDayType}`,
             });
           }
         }
@@ -692,14 +691,14 @@ export class LeaveService {
 
     //  Tính số ngày nghỉ
     const leaveDays = this.calculateLeaveDays(
-      startDate,
-      endDate,
+      startDate.toDate(),
+      endDate.toDate(),
       leave.startHalfDayType,
       leave.endHalfDayType,
     );
 
     //  Lấy balance
-    const currentYear = startDate.getFullYear();
+    const currentYear = startDate.year();
     const balance = await this.getOrCreateBalance(
       leave.userId,
       currentYear,
@@ -733,7 +732,7 @@ export class LeaveService {
         leave.userId,
         leave.leaveSubType,
         currentYear,
-        config.isPerMonth ? startDate.getMonth() : undefined,
+        config.isPerMonth ? startDate.month() : undefined,
         requestId, // loại trừ chính nó
       );
 
@@ -779,8 +778,6 @@ export class LeaveService {
     leave.paidLeaveDeduction = paidDeduction;
     leave.unpaidLeaveDeduction = unpaidDeduction;
 
-    await this.leaveRequestRepo.save(leave);
-
     // Validate file INSURANCE
     if (leave.leaveType === LeaveType.INSURANCE) {
       const hasOldFiles = leave.attachments?.length > 0;
@@ -796,6 +793,7 @@ export class LeaveService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      await queryRunner.manager.save(leave);
       // lưu file mới
       if (files && files.length > 0) {
         //xóa file cũ
@@ -854,9 +852,11 @@ export class LeaveService {
       throw new ForbiddenException(LEAVE_ERRORS.ONLY_VIEW_OWN);
     }
 
+    const startDate = dayjs(leave.startDate);
+    const endDate = dayjs(leave.endDate);
     const totalDays = this.calculateLeaveDays(
-      new Date(leave.startDate),
-      new Date(leave.endDate),
+      startDate.toDate(),
+      endDate.toDate(),
       leave.startHalfDayType,
       leave.endHalfDayType,
     );
@@ -907,10 +907,10 @@ export class LeaveService {
 
   // Tính số ngày nghỉ (startDate → endDate, inclusive)
   private calculateLeaveDays(startDate: Date, endDate: Date, startHalf: HalfDayType, endHalf: HalfDayType): number {
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
+    const start = dayjs(startDate).startOf('day');
+    const end = dayjs(endDate).startOf('day');
 
-    const diff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+    const diff = end.diff(start, 'day');
     let total = diff + 1;
 
     if (startHalf === HalfDayType.AFTERNOON) total -= 0.5;
@@ -980,8 +980,11 @@ export class LeaveService {
     const requests = await query.getMany();
     
     return requests.reduce(
-      (total, req) =>
-        total + this.calculateLeaveDays(new Date(req.startDate), new Date(req.endDate), req.startHalfDayType, req.endHalfDayType),
+      (total, req) => {
+        const reqStart = dayjs(req.startDate).startOf('day');
+        const reqEnd = dayjs(req.endDate).startOf('day');
+        return total + this.calculateLeaveDays(reqStart.toDate(), reqEnd.toDate(), req.startHalfDayType, req.endHalfDayType)
+      },
       0,
     );
   }
