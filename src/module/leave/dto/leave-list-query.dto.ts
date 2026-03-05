@@ -1,8 +1,9 @@
 import { LeaveRequestStatus } from "src/common/enums/leave-request-status.enum";
-import { IsOptional,IsEnum, IsString, IsNumber, IsDateString } from "class-validator";
+import { IsOptional, IsEnum, IsString, IsInt, IsDateString, Min, Max } from "class-validator";
+import { PaginationDto } from "src/common/pagination/pagination.dto";
 import { Type } from 'class-transformer';
 
-export class LeaveListQueryDto {
+export class LeaveListQueryDto extends PaginationDto {
 
   @IsOptional()
   @IsEnum(LeaveRequestStatus)
@@ -26,21 +27,15 @@ export class LeaveListQueryDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(12)
   month?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(2000)
   year?: number;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  page: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  limit: number = 10;
 }
