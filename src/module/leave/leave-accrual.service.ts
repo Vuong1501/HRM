@@ -6,6 +6,7 @@ import { LeaveBalance } from './entities/leave-balance.entity';
 import { User } from '../users/entities/user.entity';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import { LEAVE_CONSTANTS } from 'src/common/constants/leave.constants';
 import dayjs from 'dayjs';
 
 @Injectable()
@@ -81,7 +82,7 @@ export class LeaveAccrualService {
         }
 
         // Kiểm tra tối đa 12 phép/năm
-        if (Number(balance.annualLeaveTotal) >= 12) {
+        if (Number(balance.annualLeaveTotal) >= LEAVE_CONSTANTS.MAX_ANNUAL_LEAVE_PER_YEAR) {
           this.logger.debug(
             `User ${user.id} (${user.name}) đã đủ 12 phép, bỏ qua`,
           );
@@ -159,7 +160,7 @@ export class LeaveAccrualService {
     } else {
       balance.annualLeaveTotal = Math.min(
         Math.max(monthsToAccrue, Number(balance.annualLeaveTotal)),
-        12,
+        LEAVE_CONSTANTS.MAX_ANNUAL_LEAVE_PER_YEAR,
       );
     }
 
