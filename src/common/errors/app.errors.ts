@@ -43,4 +43,16 @@ export const APP_ERRORS = {
     code: 'VIEW_USER_FORBIDDEN',
     message: 'Bạn không có quyền xem thông tin này',
   },
+  REFRESH_TOKEN_MISSING: {
+    code: 'REFRESH_TOKEN_MISSING',
+    message: 'Không tìm thấy refresh token',
+  },
+  REFRESH_TOKEN_INVALID: {
+    code: 'REFRESH_TOKEN_INVALID',
+    message: 'Refresh token không hợp lệ hoặc đã bị thu hồi',
+  },
+  REFRESH_TOKEN_MISMATCH: {
+    code: 'REFRESH_TOKEN_MISMATCH',
+    message: 'Refresh token không khớp',
+  },
 } as const;

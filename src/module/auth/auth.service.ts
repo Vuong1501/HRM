@@ -13,6 +13,9 @@ import { JwtService } from '@nestjs/jwt';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { LoginDevDto } from './dto/login-dev.dto';
 import { APP_ERRORS } from 'src/common/errors/app.errors';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import { Response } from 'express';
 
 @Injectable()
 export class AuthService {
@@ -22,9 +25,10 @@ export class AuthService {
     private userRepositoy: Repository<User>,
     private userService: UsersService,
     private jwtService: JwtService,
+    private config: ConfigService,
   ) {}
 
-  async loginZoho(profile: Express.User, inviteToken?: string) {
+  async loginZoho(profile: Express.User, res: Response, inviteToken?: string) {
     let user: User | null = null;
 
     if (inviteToken) {
@@ -61,16 +65,7 @@ export class AuthService {
       }
     }
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    return {
-      accessToken: await this.jwtService.signAsync(payload),
-      user: this.userService.toResponse(user),
-    };
+    return this.generateTokens(user, res);
   }
 
   // async loginZoho(profile: Express.User) {
@@ -106,7 +101,7 @@ export class AuthService {
   //   };
   // }
 
-  async devLogin(dto: LoginDevDto) {
+  async devLogin(dto: LoginDevDto, res: Response) {
     if (process.env.NODE_ENV === 'production') {
       this.logger.warn('Dev chỉ login ở development');
       throw new ForbiddenException(APP_ERRORS.DEV_LOGIN_DISABLED);
@@ -120,14 +115,61 @@ export class AuthService {
       this.logger.warn(`Dev login user not found: ${dto.email}`);
       throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
-    const payload = {
-      email: user.email,
-      sub: user.id,
-      role: user.role,
-    };
     this.logger.log(`Dev login success: ${user.email}`);
+    return this.generateTokens(user, res);
+  }
+
+  async refreshTokens(user: User, res: Response) {
+    // user đã được validate trong JwtRefreshStrategy
+    return this.generateTokens(user, res);
+  }
+
+  async logout(userId: number, res: Response) {
+    // Xóa hash refresh token trong DB
+    await this.userRepositoy.update(userId, { refreshToken: null });
+
+    // Clear cookie
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    return { message: 'Đăng xuất thành công' };
+  }
+
+  async generateTokens(user: User, res: Response){
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    }
+
+    const [accessToken, refreshToken ] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.config.get('JWT_SECRET'),
+        expiresIn: this.config.get('JWT_EXPIRE'), // '15m'
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.config.get('JWT_REFRESH_SECRET'),
+        expiresIn: this.config.get('JWT_REFRESH_EXPIRE'), // '7d'
+      }),
+    ])
+
+    // hash refreshToken
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.userRepositoy.update(user.id, {refreshToken: hashedRefreshToken});
+
+    // gửi refresh qua cookie
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+
     return {
-      accessToken: this.jwtService.sign(payload),
-    };
+      accessToken,
+    }
   }
 }

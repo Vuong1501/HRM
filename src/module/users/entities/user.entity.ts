@@ -82,6 +82,9 @@ export class User {
   @CreateDateColumn()
   createdAt: Date;
 
+  @Column({ type: 'varchar', nullable: true })
+  refreshToken: string | null;
+
   // các mối quan hệ
   @OneToMany(() => LeaveRequest, request => request.user)
   leaveRequests: LeaveRequest[];
