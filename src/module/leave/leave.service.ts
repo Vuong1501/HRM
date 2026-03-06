@@ -246,9 +246,10 @@ export class LeaveService {
         },
       };
     } catch (error) {
-      // rollbakc db
       await queryRunner.rollbackTransaction();
       throw error;
+    } finally {
+      await queryRunner.release();
     }
   }
   // lấy đơn xin nghỉ của mình
@@ -315,7 +316,7 @@ export class LeaveService {
         warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay.`;
     }
 
-    await this.dataSource.transaction(async (manager) => {
+    return await this.dataSource.transaction(async (manager) => {
 
       // cập nhật trạng thái đơn
       leave.status = LeaveRequestStatus.APPROVED;
@@ -439,7 +440,7 @@ export class LeaveService {
       ? await this.getOrCreateBalance(leaveRequest.userId, currentYear)
       : null;
     // bắt đầu transaction
-    await this.dataSource.transaction(async (manager) => {
+    return await this.dataSource.transaction(async (manager) => {
 
       if (leaveRequest.status === LeaveRequestStatus.APPROVED && balance) {
         const startDate = dayjs(leaveRequest.startDate).startOf('day');

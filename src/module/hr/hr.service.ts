@@ -79,6 +79,7 @@ async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
         continue;
       }
 
+
       await queryRunner.query('SAVEPOINT user_savepoint');
 
       try {
@@ -107,11 +108,13 @@ async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
           'SEND_INVITE_FAILED',
         );
 
-        await queryRunner.commitTransaction();
+
+        await queryRunner.query('RELEASE SAVEPOINT user_savepoint');
         result.success.push(userDto);
 
       } catch (error) {
-        await queryRunner.rollbackTransaction();
+
+        await queryRunner.query('ROLLBACK TO SAVEPOINT user_savepoint');
         result.failed.push({
           user: userDto,
           reason: error instanceof Error ? error.message : 'Lỗi không xác định',

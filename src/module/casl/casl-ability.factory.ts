@@ -29,6 +29,10 @@ export class CaslAbilityFactory {
       can(Action.Create, LeaveRequest);
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User);
+      // Leave: tạo + cập nhật đơn của chính mình (vì lead cũng là nhân viên)
+      can(Action.Create, LeaveRequest);
+      can(Action.Update, LeaveRequest);
+      can(Action.Cancel, LeaveRequest);
       // Leave: đọc + duyệt đơn của nhân viên cùng phòng ban
       can(Action.Read, LeaveRequest);
       can(Action.Approve, LeaveRequest);
