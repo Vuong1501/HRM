@@ -8,9 +8,10 @@ import { User } from '../users/entities/user.entity';
 import { LeaveRequest } from '../leave/entities/leave-request.entity';
 import { CaslModule } from '../casl/casl.module';
 import { MailModule } from '../mail/mail.module';
+import { CalendarModule } from '../calendar/calendar.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OtPlan, OtPlanEmployee, User, LeaveRequest]), CaslModule, MailModule],
+  imports: [TypeOrmModule.forFeature([OtPlan, OtPlanEmployee, User, LeaveRequest]), CaslModule, MailModule, CalendarModule],
   controllers: [OtController],
   providers: [OtService]
 })

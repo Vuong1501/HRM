@@ -1,4 +1,12 @@
 export const OT_ERRORS = {
+  INVALID_TIME_RANGE: {
+    code: 'INVALID_TIME_RANGE',
+    message: 'Thời gian bắt đầu phải trước thời gian kết thúc',
+  },
+  EMPLOYEE_NOT_FOUND: {
+    code: 'EMPLOYEE_NOT_FOUND',
+    message: 'Không tìm thấy nhân viên',
+  },
   OT_PLAN_NOT_FOUND: {
     code: 'OT_PLAN_NOT_FOUND',
     message: 'Không tìm thấy kế hoạch OT',
@@ -34,5 +42,17 @@ export const OT_ERRORS = {
   NOT_CHECKED_IN: {
     code: 'NOT_CHECKED_IN',
     message: 'Nhân viên chưa check-in',
+  },
+  WEEKDAY_OT_MUST_START_AFTER_1730: {
+    code: 'WEEKDAY_OT_MUST_START_AFTER_1730',
+    message: 'Ngày thường chỉ được tạo OT từ 17:30 trở đi',
+  },
+  WEEKDAY_OT_MAX_4_HOURS: {
+    code: 'WEEKDAY_OT_MAX_4_HOURS',
+    message: 'Ngày thường OT tối đa 4 tiếng',
+  },
+  WEEKEND_OT_MAX_8_HOURS: {
+    code: 'WEEKEND_OT_MAX_8_HOURS',
+    message: 'Cuối tuần/lễ OT tối đa 8 tiếng',
   },
 } as const;

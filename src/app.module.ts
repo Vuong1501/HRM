@@ -13,6 +13,7 @@ import { CaslModule } from './module/casl/casl.module';
 import { LeaveModule } from './module/leave/leave.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OtModule } from './module/ot/ot.module';
+import { CalendarModule } from './module/calendar/calendar.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { OtModule } from './module/ot/ot.module';
     CaslModule,
     LeaveModule,
     OtModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],
