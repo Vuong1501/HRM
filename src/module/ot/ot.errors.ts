@@ -55,4 +55,16 @@ export const OT_ERRORS = {
     code: 'WEEKEND_OT_MAX_8_HOURS',
     message: 'Cuối tuần/lễ OT tối đa 8 tiếng',
   },
+  SEND_OT_NOTIFICATION_FAILED: {
+    code: 'SEND_OT_NOTIFICATION_FAILED',
+    message: 'Gửi mail thông báo OT cho nhân viên thất bại',
+  },
+  SEND_OT_PLAN_SUBMITTED_FAILED: {
+    code: 'SEND_OT_PLAN_SUBMITTED_FAILED',
+    message: 'Gửi mail thông báo OT cho admin thất bại',
+  },
+  ADMIN_NOT_FOUND: {
+    code: 'ADMIN_NOT_FOUND',
+    message: 'Không tìm thấy admin',
+  },
 } as const;

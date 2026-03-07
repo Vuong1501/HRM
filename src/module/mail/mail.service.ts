@@ -91,6 +91,47 @@ export class MailService {
         endDate: dayjs(endDate).format('DD MMM YYYY'),
       },
     });
+  }
 
+  async sendOtPlanApproved(
+    to: string,
+    employeeName: string,
+    startTime: Date,
+    endTime: Date,
+    reason: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo kế hoạch OT đã được duyệt',
+      template: 'ot-approved',
+      context: {
+        employeeName,
+        startTime: dayjs(startTime).format('HH:mm DD/MM/YYYY'),
+        endTime: dayjs(endTime).format('HH:mm DD/MM/YYYY'),
+        reason,
+      },
+    });
+  }
+
+  async sendOtPlanSubmitted(
+    to: string,
+    creatorName: string,
+    departmentName: string,
+    startTime: Date,
+    endTime: Date,
+    reason: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo có kế hoạch OT mới cần duyệt',
+      template: 'ot-submitted',
+      context: {
+        creatorName,
+        departmentName,
+        startTime: dayjs(startTime).format('HH:mm DD/MM/YYYY'),
+        endTime: dayjs(endTime).format('HH:mm DD/MM/YYYY'),
+        reason,
+      },
+    });
   }
 }

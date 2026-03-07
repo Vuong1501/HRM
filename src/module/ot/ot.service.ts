@@ -141,6 +141,38 @@ export class OtService {
             await queryRunner.manager.save(OtPlanEmployee, otPlanEmployees);
 
             // cần thêm đoạn gửi mail cho các nhân viên
+            if(isItDepartment) {
+                await Promise.all(
+                    employees.map(async (emp) => 
+                        await this.mailService.sendOtPlanSubmitted(
+                            emp.email,
+                            creator.name,
+                            creator.departmentName,
+                            startTime.toDate(),
+                            endTime.toDate(),
+                            dto.reason,
+                        ),
+                        'SEND_OT_NOTIFICATION_FAILED',
+                    )
+                )
+            } else {
+                const admin  = await this.userRepo.findOneBy({
+                    role: UserRole.ADMIN,
+                })
+
+                if(!admin) {
+                    throw new BadRequestException(OT_ERRORS.ADMIN_NOT_FOUND);
+                }
+
+                await this.mailService.sendOtPlanSubmitted(
+                    admin.email,
+                    creator.name,
+                    creator.departmentName,
+                    startTime.toDate(),
+                    endTime.toDate(),
+                    dto.reason,
+                )
+            }
 
             await queryRunner.commitTransaction();
             return savedPlan;
