@@ -21,7 +21,7 @@ export class OtPlan {
   creatorId: number;
 
   @Column({ nullable: true })
-  approverId: number;
+  approverId: number | null;
 
   @Column()
   startTime: Date;
@@ -42,8 +42,8 @@ export class OtPlan {
   @Column({ nullable: true })
   rejectedReason: string;
 
-  @Column({ nullable: true })
-  approvedAt: Date;
+  @Column({type: 'datetime', nullable: true })
+  approvedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;
