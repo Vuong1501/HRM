@@ -8,10 +8,11 @@ import {
 import { Injectable } from '@nestjs/common';
 import { User } from '../users/entities/user.entity';
 import { LeaveRequest } from '../leave/entities/leave-request.entity';
+import { OtPlan } from '../ot/entities/ot-plan.entity';
 import { Action } from 'src/common/enums/action.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
 
-type Subjects = InferSubjects<typeof User | typeof LeaveRequest> | 'all';
+type Subjects = InferSubjects<typeof User | typeof LeaveRequest | typeof OtPlan> | 'all';
 
 export type AppAbility = MongoAbility<[Action, Subjects]>;
 
@@ -27,25 +28,30 @@ export class CaslAbilityFactory {
       can(Action.Manage, User);
       can(Action.Read, LeaveRequest);
       can(Action.Create, LeaveRequest);
+      can(Action.Read, OtPlan);
+      can(Action.Cancel, OtPlan)
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User);
-      // Leave: tạo + cập nhật đơn của chính mình (vì lead cũng là nhân viên)
       can(Action.Create, LeaveRequest);
       can(Action.Update, LeaveRequest);
       can(Action.Cancel, LeaveRequest);
-      // Leave: đọc + duyệt đơn của nhân viên cùng phòng ban
       can(Action.Read, LeaveRequest);
       can(Action.Approve, LeaveRequest);
       can(Action.Reject, LeaveRequest);
-      // đang có cách làm là bỏ qua điều kiện departmentName trong casl thì sẽ ok
+      can(Action.Create, OtPlan);
+      can(Action.Update, OtPlan);
+      can(Action.Approve, OtPlan);
     } else if (user.role === UserRole.EMPLOYEE) {
       can(Action.Read, User);
       can(Action.Update, User);
-      // Leave: tạo, đọc, cập nhật đơn của mình
       can(Action.Create, LeaveRequest);
       can(Action.Read, LeaveRequest);
       can(Action.Update, LeaveRequest);
       can(Action.Cancel, LeaveRequest);
+      can(Action.Read, OtPlan);
+      can(Action.CheckIn, OtPlan);
+      can(Action.CheckOut, OtPlan);
+      
     }
 
     return build({

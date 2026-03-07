@@ -1,0 +1,53 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+} from 'typeorm';
+import { User } from '../../users/entities/user.entity';
+import { OtPlanEmployeeStatus } from 'src/common/enums/ot/ot-employee-status.enum';
+import { OtPlan } from './ot-plan.entity';
+
+@Entity('ot_plan_employees')
+export class OtPlanEmployee {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  otPlanId: number;
+
+  @Column()
+  employeeId: number;
+
+  @Column({
+    type: 'enum',
+    enum: OtPlanEmployeeStatus,
+    default: OtPlanEmployeeStatus.PENDING,
+  })
+  status: OtPlanEmployeeStatus;
+
+  @Column({ nullable: true })
+  checkInTime: Date;
+
+  @Column({ nullable: true })
+  checkOutTime: Date;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  actualHours: number;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  // Relations
+  @ManyToOne(() => OtPlan, (plan) => plan.employees)
+  @JoinColumn({ name: 'otPlanId' })
+  otPlan: OtPlan;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'employeeId' })
+  employee: User;
+}

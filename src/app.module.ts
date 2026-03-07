@@ -12,6 +12,7 @@ import { InviteModule } from './module/invite/invite.module';
 import { CaslModule } from './module/casl/casl.module';
 import { LeaveModule } from './module/leave/leave.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { OtModule } from './module/ot/ot.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     InviteModule,
     CaslModule,
     LeaveModule,
+    OtModule,
   ],
   controllers: [AppController],
   providers: [AppService],
