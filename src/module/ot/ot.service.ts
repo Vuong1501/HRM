@@ -222,7 +222,7 @@ export class OtService {
             }
 
             // update atomic bảng con
-            await this.otPlanEmployeeRepo.update(
+            await queryRunner.manager.update(OtPlanEmployee,
                 {otPlanId: otPlanId},
                 {status: OtPlanEmployeeStatus.PENDING}
             );
