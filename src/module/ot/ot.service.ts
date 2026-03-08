@@ -228,7 +228,7 @@ export class OtService {
             );
 
             await queryRunner.commitTransaction();
-            // Gửi mail cho từng nhân viên trong background (Fire-and-forget)
+            // Gửi mail cho từng nhân viên trong background
             Promise.all(
                 otPlan.employees.map((emp) =>
                     this.mailService.sendMailWithRetry(
