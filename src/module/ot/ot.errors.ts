@@ -67,4 +67,8 @@ export const OT_ERRORS = {
     code: 'ADMIN_NOT_FOUND',
     message: 'Không tìm thấy admin',
   },
+  ONLY_ADMIN_APPROVE: {
+    code: 'ONLY_ADMIN_APPROVE',
+    message: 'Chỉ admin mới có quyền duyệt đơn OT plan'
+  }
 } as const;

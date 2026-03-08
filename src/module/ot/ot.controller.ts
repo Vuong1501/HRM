@@ -33,4 +33,13 @@ export class OtController {
     ) {
         return this.otService.createOtPlan(req.userEntity, dto);
     }
+
+    @Patch('plan/:id/approve')
+    @CheckPolicies((ability) => ability.can(Action.Update, OtPlan))
+    approveOtPlan(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+    ) {
+        return this.otService.approveOtPlan(req.userEntity, Number(id));
+    }
 }

@@ -11,4 +11,8 @@ export const MAIL_ERRORS = {
     code: 'SEND_LEAVE_APPROVED_FAILED',
     message: 'Gửi mail thông báo duyệt thất bại',
   },
+  SEND_OT_NOTIFICATION_FAILED: {
+    code: 'SEND_OT_NOTIFICATION_FAILED',
+    message: 'Gửi mail thông báo kế hoạch OT thất bại',
+  },
 } as const;

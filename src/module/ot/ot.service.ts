@@ -140,21 +140,23 @@ export class OtService {
 
             await queryRunner.manager.save(OtPlanEmployee, otPlanEmployees);
 
-            // cần thêm đoạn gửi mail cho các nhân viên
+            // Gửi mail cho các nhân viên trong background
             if(isItDepartment) {
-                await Promise.all(
-                    employees.map(async (emp) => 
-                        await this.mailService.sendOtPlanSubmitted(
-                            emp.email,
-                            creator.name,
-                            creator.departmentName,
-                            startTime.toDate(),
-                            endTime.toDate(),
-                            dto.reason,
-                        ),
-                        'SEND_OT_NOTIFICATION_FAILED',
+                Promise.all(
+                    employees.map((emp) => 
+                        this.mailService.sendMailWithRetry(
+                            () => this.mailService.sendOtPlanSubmitted(
+                                emp.email,
+                                creator.name,
+                                creator.departmentName,
+                                startTime.toDate(),
+                                endTime.toDate(),
+                                dto.reason,
+                            ),
+                            'SEND_OT_NOTIFICATION_FAILED',
+                        ).catch(e => console.error(`Lỗi gửi mail OT cho ${emp.email}`, e))
                     )
-                )
+                );
             } else {
                 const admin  = await this.userRepo.findOneBy({
                     role: UserRole.ADMIN,
@@ -164,14 +166,17 @@ export class OtService {
                     throw new BadRequestException(OT_ERRORS.ADMIN_NOT_FOUND);
                 }
 
-                await this.mailService.sendOtPlanSubmitted(
-                    admin.email,
-                    creator.name,
-                    creator.departmentName,
-                    startTime.toDate(),
-                    endTime.toDate(),
-                    dto.reason,
-                )
+                this.mailService.sendMailWithRetry(
+                    () => this.mailService.sendOtPlanSubmitted(
+                        admin.email,
+                        creator.name,
+                        creator.departmentName,
+                        startTime.toDate(),
+                        endTime.toDate(),
+                        dto.reason,
+                    ),
+                    'SEND_OT_NOTIFICATION_FAILED',
+                ).catch(e => console.error(`Lỗi gửi mail OT cho admin ${admin.email}`, e));
             }
 
             await queryRunner.commitTransaction();
@@ -184,4 +189,66 @@ export class OtService {
         }
     }
 
+    // duyệt đơn OT
+    async approveOtPlan(approver: User, otPlanId: number) {
+
+        if(approver.role !== UserRole.ADMIN) throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_APPROVE);
+
+        const otPlan = await this.otPlanRepo.findOne({
+            where: { id: otPlanId },
+            relations: ['employees', 'employees.employee'],
+        });
+
+        if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // atomic update
+            const updateResult = await queryRunner.manager.update(
+                OtPlan,
+                {id: otPlanId, status: OtPlanStatus.PENDING},
+                {
+                    status: OtPlanStatus.APPROVED,
+                    approverId: approver.id,
+                    approvedAt: dayjs().toDate(),
+                }
+            );
+
+            if(updateResult.affected === 0) {
+                throw new BadRequestException(OT_ERRORS.OT_PLAN_NOT_PENDING);
+            }
+
+            // update atomic bảng con
+            await this.otPlanEmployeeRepo.update(
+                {otPlanId: otPlanId},
+                {status: OtPlanEmployeeStatus.PENDING}
+            );
+
+            await queryRunner.commitTransaction();
+            // Gửi mail cho từng nhân viên trong background (Fire-and-forget)
+            Promise.all(
+                otPlan.employees.map((emp) =>
+                    this.mailService.sendMailWithRetry(
+                        () => this.mailService.sendOtPlanApproved(
+                            emp.employee.email,
+                            emp.employee.name,
+                            otPlan.startTime,
+                            otPlan.endTime,
+                            otPlan.reason,
+                        ),
+                        'SEND_OT_NOTIFICATION_FAILED',
+                    ).catch(e => console.error(`Lỗi gửi mail OT được duyệt cho ${emp.employee.email}`, e))
+                ),
+            );
+            return { message: 'Duyệt kế hoạch OT thành công' };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
 }
