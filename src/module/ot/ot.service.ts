@@ -134,7 +134,7 @@ export class OtService {
                 queryRunner.manager.create(OtPlanEmployee, {
                     otPlanId: savedPlan.id,
                     employeeId: emp.id,
-                    status: OtPlanEmployeeStatus.PENDING,
+                    status: isItDepartment ? OtPlanEmployeeStatus.PENDING : OtPlanEmployeeStatus.WAITING,
                 }),
             );
 

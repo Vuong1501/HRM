@@ -43,7 +43,7 @@ export class CaslAbilityFactory {
       can(Action.Approve, OtPlan);
     } else if (user.role === UserRole.EMPLOYEE) {
       can(Action.Read, User);
-      can(Action.Update, User);
+      can(Action.Update, User);// không được đổi tên của mình, chỉ có đọc
       can(Action.Create, LeaveRequest);
       can(Action.Read, LeaveRequest);
       can(Action.Update, LeaveRequest);
