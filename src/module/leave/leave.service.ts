@@ -304,10 +304,6 @@ export class LeaveService {
       throw new ForbiddenException(LEAVE_ERRORS.APPROVE_OWN_DEPARTMENT_ONLY);
     }
 
-    if (leave.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException(LEAVE_ERRORS.CANNOT_APPROVE);
-    }
-
     // lấy hoặc tạo balance
     const currentYear = dayjs().year();
     const balance = await this.getOrCreateBalance(leave.userId, currentYear);
@@ -316,15 +312,27 @@ export class LeaveService {
         warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay.`;
     }
 
-    return await this.dataSource.transaction(async (manager) => {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-      // cập nhật trạng thái đơn
-      leave.status = LeaveRequestStatus.APPROVED;
-      leave.approverId = user.id;
-      leave.approvedAt = dayjs().toDate();
+    try {
+      // 1. ATOMIC UPDATE Bảng Cha
+      const updateResult = await queryRunner.manager.update(
+        LeaveRequest,
+        { id: requestId, status: LeaveRequestStatus.PENDING },
+        {
+          status: LeaveRequestStatus.APPROVED,
+          approverId: user.id,
+          approvedAt: dayjs().toDate(),
+        }
+      );
 
-      await manager.save(leave);
+      if (updateResult.affected === 0) {
+        throw new BadRequestException(LEAVE_ERRORS.CANNOT_APPROVE);
+      }
 
+      // 2. Chỉnh sửa bảng con (Quỹ phép)
       const startDate = dayjs(leave.startDate).startOf('day');
       const endDate = dayjs(leave.endDate).startOf('day');
       if (leave.leaveType === LeaveType.COMPENSATORY) {
@@ -344,17 +352,20 @@ export class LeaveService {
 
         balance.unpaidLeaveUsed =
           Number(balance.unpaidLeaveUsed) +
-        Number(leave.unpaidLeaveDeduction); 
+          Number(leave.unpaidLeaveDeduction); 
       }
 
-      await manager.save(balance);
+      await queryRunner.manager.save(LeaveBalance, balance);
+      
+      // 3. Chốt data DB trước
+      await queryRunner.commitTransaction();
 
-      // gửi mail
+      // 4. Gửi mail ngầm ra ngoài (Fire-and-forget)
       const hrs = await this.userRepo.find({
         where: { role: UserRole.HR },
       });
 
-      await Promise.all(
+      Promise.all(
         hrs.map((hr) =>
           this.mailService.sendMailWithRetry(
             () => this.mailService.sendLeaveApprovedNotification(
@@ -364,7 +375,7 @@ export class LeaveService {
               endDate.toDate(),
             ),
             'SEND_LEAVE_APPROVED_FAILED',
-          ),
+          ).catch(e => console.error(`Lỗi gửi mail HR (${hr.email}) duyệt nghỉ của ${leave.user.email}`, e))
         ),
       );
 
@@ -372,7 +383,12 @@ export class LeaveService {
         message: 'Duyệt đơn nghỉ thành công',
         ...(warning && { warning }),
       };
-    })
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   //Từ chối đơn nghỉ
@@ -396,18 +412,22 @@ export class LeaveService {
       throw new ForbiddenException(LEAVE_ERRORS.REJECT_OWN_DEPARTMENT_ONLY);
     }
 
-    if (leave.status !== LeaveRequestStatus.PENDING) {
+    // update atomic
+    const updateResult = await this.leaveRequestRepo.update(
+        { id: requestId, status: LeaveRequestStatus.PENDING },
+        {
+            status: LeaveRequestStatus.REJECTED,
+            rejectionReason: dto.rejectionReason,
+            approverId: userId,
+        }
+    );
+
+    if (updateResult.affected === 0) {
       throw new BadRequestException(LEAVE_ERRORS.NOT_PENDING_STATUS);
     }
 
-    leave.status = LeaveRequestStatus.REJECTED;
-    leave.rejectionReason = dto.rejectionReason;
-    leave.approverId = userId;
-    await this.leaveRequestRepo.save(leave);
-
     return {
-      message: 'Đã từ chối đơn nghỉ',
-      data: leave,
+      message: 'Từ chối đơn xin nghỉ thành công'
     };
   }
 
