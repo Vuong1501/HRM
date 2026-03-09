@@ -15,4 +15,8 @@ export const MAIL_ERRORS = {
     code: 'SEND_OT_NOTIFICATION_FAILED',
     message: 'Gửi mail thông báo kế hoạch OT thất bại',
   },
+  SEND_OT_REJECTED_FAILED: {
+    code: 'SEND_OT_REJECTED_FAILED',
+    message: 'Gửi mail thông báo từ chối kế hoạch OT thất bại',
+  },
 } as const;

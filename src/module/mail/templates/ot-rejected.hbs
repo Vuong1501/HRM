@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #d32f2f; padding: 24px; text-align: center; }
+    .header h1 { color: #fff; margin: 0; font-size: 20px; }
+    .body { padding: 32px; color: #333; }
+    .info-box { background: #ffebee; border-left: 4px solid #d32f2f; padding: 16px; border-radius: 4px; margin: 20px 0; }
+    .info-row { margin: 8px 0; font-size: 15px; }
+    .label { font-weight: bold; color: #555; }
+    .footer { background: #f4f4f4; text-align: center; padding: 16px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>❌ Kế hoạch OT đã bị từ chối</h1>
+    </div>
+    <div class="body">
+      <p>Xin chào <strong>{{creatorName}}</strong>,</p>
+      <p>Kế hoạch OT mà bạn vừa trình lên đã <strong>không được phê duyệt</strong>.</p>
+
+      <div class="info-box">
+        <div class="info-row">
+          <span class="label">🕐 Thời gian bắt đầu:</span> {{startTime}}
+        </div>
+        <div class="info-row">
+          <span class="label">🕐 Thời gian kết thúc:</span> {{endTime}}
+        </div>
+        <div class="info-row" style="color: #d32f2f; margin-top: 12px;">
+          <span class="label">📝 Lý do từ chối:</span> {{rejectedReason}}
+        </div>
+      </div>
+
+      <p>Vui lòng đăng nhập vào hệ thống để kiểm tra lại và lên kế hoạch OT khác nếu cần thiết.</p>
+      <p>Trân trọng,<br/><strong>Hệ thống quản lý nhân sự</strong></p>
+    </div>
+    <div class="footer">
+      Email này được gửi tự động, vui lòng không trả lời.
+    </div>
+  </div>
+</body>
+</html>

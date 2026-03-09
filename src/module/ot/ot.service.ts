@@ -251,4 +251,54 @@ export class OtService {
             await queryRunner.release();
         }
     }
+
+    // từ chối đơn OT
+    async rejectOtPlan(approver: User, otPlanId: number, rejectedReason: string) {
+        if(approver.role !== UserRole.ADMIN) {
+            throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_REJECT);
+        }
+
+        if(!rejectedReason || rejectedReason.trim() === '') {
+            throw new BadRequestException(OT_ERRORS.REJECT_REASON_REQUIRED);
+        }
+
+        const otPlan = await this.otPlanRepo.findOne({
+            where: { id: otPlanId },
+            relations: ['creator'],
+        });
+
+        if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        // atomic update Bảng Cha
+        const updateResult = await this.otPlanRepo.update(
+            { id: otPlanId, status: OtPlanStatus.PENDING },
+            {
+                status: OtPlanStatus.REJECTED,
+                approverId: approver.id,
+                rejectedReason: rejectedReason,
+                approvedAt: null,
+            }
+        );
+
+        console.log('updateResult', updateResult);
+        console.log('updateResult.affected', updateResult.affected);
+
+        if(updateResult.affected === 0) {
+            throw new BadRequestException(OT_ERRORS.OT_PLAN_NOT_PENDING);
+        }
+
+        // Gửi mail thông báo lại cho ông Quản lý (Creator) biết là đơn bị vứt sọt rác
+        this.mailService.sendMailWithRetry(
+            () => this.mailService.sendOtPlanRejected(
+                otPlan.creator.email,
+                otPlan.creator.name,
+                otPlan.startTime,
+                otPlan.endTime,
+                rejectedReason,
+            ),
+            'SEND_OT_REJECTED_FAILED',
+        ).catch(e => console.error(`Lỗi gửi mail OT bị từ chối cho quản lý ${otPlan.creator.email}`, e));
+
+        return { message: 'Từ chối kế hoạch OT thành công' };
+    }
 }

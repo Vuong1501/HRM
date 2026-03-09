@@ -42,4 +42,14 @@ export class OtController {
     ) {
         return this.otService.approveOtPlan(req.userEntity, Number(id));
     }
+
+    @Patch('plan/:id/reject')
+    @CheckPolicies((ability) => ability.can(Action.Update, OtPlan))
+    rejectOtPlan(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+        @Body('rejectedReason') rejectedReason: string,
+    ) {
+        return this.otService.rejectOtPlan(req.userEntity, Number(id), rejectedReason);
+    }
 }

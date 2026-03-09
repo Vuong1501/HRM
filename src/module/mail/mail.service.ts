@@ -135,4 +135,24 @@ export class MailService {
       },
     });
   }
+
+  async sendOtPlanRejected(
+    to: string,
+    creatorName: string,
+    startTime: Date,
+    endTime: Date,
+    rejectedReason: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo: Kế hoạch OT đã BỊ TỪ CHỐI',
+      template: 'ot-rejected',
+      context: {
+        creatorName,
+        startTime: dayjs(startTime).format('HH:mm DD/MM/YYYY'),
+        endTime: dayjs(endTime).format('HH:mm DD/MM/YYYY'),
+        rejectedReason,
+      },
+    });
+  }
 }

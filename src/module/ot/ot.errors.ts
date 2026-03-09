@@ -70,5 +70,13 @@ export const OT_ERRORS = {
   ONLY_ADMIN_APPROVE: {
     code: 'ONLY_ADMIN_APPROVE',
     message: 'Chỉ admin mới có quyền duyệt đơn OT plan'
+  },
+  ONLY_ADMIN_REJECT: {
+    code: 'ONLY_ADMIN_REJECT',
+    message: 'Chỉ admin mới có quyền từ chối đơn OT plan'
+  },
+  REJECT_REASON_REQUIRED: {
+    code: 'REJECT_REASON_REQUIRED',
+    message: 'Vui lòng cung cấp lý do từ chối đơn OT'
   }
 } as const;
