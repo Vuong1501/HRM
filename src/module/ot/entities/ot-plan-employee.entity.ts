@@ -7,16 +7,19 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { OtPlanEmployeeStatus } from 'src/common/enums/ot/ot-employee-status.enum';
 import { OtPlan } from './ot-plan.entity';
 
 @Entity('ot_plan_employees')
+@Index(['employeeId', 'status'])
 export class OtPlanEmployee {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Index() 
   @Column()
   otPlanId: number;
 

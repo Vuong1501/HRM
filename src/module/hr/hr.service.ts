@@ -28,7 +28,7 @@ export class HrService {
     });
     if (existed) throw new ConflictException('User existed');
     const token = randomUUID();
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    const frontendUrl = this.configService.get<string>('BACKEND_URL');
     const link = `${frontendUrl}/invite/accept?token=${token}`;
 
     await this.dataSource.transaction(async (manager) => {
@@ -100,7 +100,7 @@ async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
 
         const user = await queryRunner.manager.save(entity);
 
-        const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
+        const frontendUrl = this.configService.getOrThrow<string>('BACKEND_URL');
         const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
 
         await this.mailService.sendMailWithRetry(
