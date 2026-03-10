@@ -8,11 +8,14 @@ import { UserStatus } from 'src/common/enums/user-status.enum';
 import type { Request, Response } from 'express';
 import { APP_ERRORS } from 'src/common/errors/app.errors';
 
+import { ConfigService } from '@nestjs/config';
+
 @Controller('invite')
 export class InviteController {
   constructor(
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private configService: ConfigService,
   ) {}
 
   @Get('accept')
@@ -32,13 +35,7 @@ export class InviteController {
     });
 
     // redirect sang Zoho login
-    return res.redirect('http://localhost:5173/login?invited=true');
-
-    // delop dùng cách này
-    // return res.redirect('https://fe-intern-sky.vercel.app/login?invited=true');
-
-    // return res.redirect(
-    //   'https://undemonstrated-kinley-mischievously.ngrok-free.dev',
-    // );
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/login?invited=true`);
   }
 }

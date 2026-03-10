@@ -102,7 +102,7 @@ export class AuthService {
   // }
 
   async devLogin(dto: LoginDevDto, res: Response) {
-    if (process.env.NODE_ENV === 'production') {
+    if (this.config.get('NODE_ENV') === 'production') {
       this.logger.warn('Dev chỉ login ở development');
       throw new ForbiddenException(APP_ERRORS.DEV_LOGIN_DISABLED);
     }
@@ -131,7 +131,7 @@ export class AuthService {
     // Clear cookie
     res.clearCookie('refresh_token', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: this.config.get('NODE_ENV') === 'production',
       sameSite: 'strict',
     });
 

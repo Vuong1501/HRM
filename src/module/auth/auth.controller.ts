@@ -19,11 +19,15 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { JwtRefreshGuard } from 'src/common/guards/jwt-refresh.guard';
 import type { RequestWithUser } from 'src/common/interfaces/request-with-user.interface';
 import { User } from '../users/entities/user.entity';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Get('zoho')
   @UseGuards(AuthGuard('zoho'))
@@ -44,8 +48,9 @@ export class AuthController {
     const result = await this.authService.loginZoho(req.user, res, inviteToken);
     res.clearCookie('invite_token');
 
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     return res.redirect(
-      `http://localhost:5173/login-success?accessToken=${result.accessToken}`,
+      `${frontendUrl}/login-success?accessToken=${result.accessToken}`,
     );
   }
 

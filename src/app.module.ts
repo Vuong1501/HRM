@@ -4,8 +4,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './module/auth/auth.module';
 import { UsersModule } from './module/users/users.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { typeOrmConfig } from './database/typeorm.config';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HrModule } from './module/hr/hr.module';
 import { MailModule } from './module/mail/mail.module';
 import { InviteModule } from './module/invite/invite.module';
@@ -18,7 +17,22 @@ import { CalendarModule } from './module/calendar/calendar.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRoot(typeOrmConfig),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'mysql',
+        host: configService.getOrThrow<string>('DB_HOST'),
+        port: configService.getOrThrow<number>('DB_PORT'),
+        username: configService.getOrThrow<string>('DB_USERNAME'),
+        password: configService.getOrThrow<string>('DB_PASSWORD'),
+        database: configService.getOrThrow<string>('DB_DATABASE'),
+        synchronize: false,
+        autoLoadEntities: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        logging: configService.get<string>('NODE_ENV') === 'production' ? ['error'] : ['query', 'error'],
+      }),
+    }),
     ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,

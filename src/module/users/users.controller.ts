@@ -54,7 +54,6 @@ export class UsersController {
     @Req() req: RequestWithUser,
   ) {
     const userToRead = await this.usersService.findOneEntity(id);
-    // Sử dụng userEntity đã được PoliciesGuard fetch sẵn
     if (!req.userEntity) {
       throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     }

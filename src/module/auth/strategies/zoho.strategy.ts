@@ -12,6 +12,7 @@ import {
   ZOHO_TOKEN_URL,
   ZOHO_USER_INFO_URL,
   ZOHO_STRATEGY,
+  ZOHO_SCOPE
 } from 'src/common/constants/zoho.constant';
 
 interface ZohoUserInfo {
@@ -37,7 +38,7 @@ export class ZohoStrategy extends PassportStrategy(Strategy, ZOHO_STRATEGY) {
       clientID: clientId,
       clientSecret: clientSecret,
       callbackURL: callback,
-      scope: ['AaaServer.profile.READ'],
+      scope: [ZOHO_SCOPE],
     });
   }
   // , refreshToken: string

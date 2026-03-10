@@ -22,21 +22,6 @@ export class UsersService {
     };
   }
 
-  // async create(createUserDto: CreateUserDto) {
-  //   const existed = await this.userRepository.findOne({
-  //     where: { email: createUserDto.email },
-  //   });
-  //   if (existed) {
-  //     throw new ConflictException('Email already exists');
-  //   }
-  //   const hashPassword = await bcrypt.hash(createUserDto.password, 10);
-  //   const user = await this.userRepository.save({
-  //     email: createUserDto.email,
-  //     password: hashPassword,
-  //     name: createUserDto.name,
-  //   });
-  //   return this.toResponse(user);
-  // }
   async getMe(id: number) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user) {
