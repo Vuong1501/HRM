@@ -88,30 +88,46 @@ export class OtService {
             throw new ForbiddenException(OT_ERRORS.ONLY_OWN_DEPARTMENT);
         }
         
-        // check trùng lịch OT của từng nhân viên trong đơn ot đang tạo
-        for(const employee of employees){
-            const conflictOt = await this.otPlanEmployeeRepo
-            .createQueryBuilder('ope')
-            .leftJoin('ope.otPlan','op')
-            .where('ope.employeeId = :employeeId', { employeeId: employee.id })
-            .andWhere('op.status IN (:...statuses)', { statuses: [OtPlanStatus.APPROVED, OtPlanStatus.PENDING] })
-            // phải không được trùng cả đơn đã tạo(pending, giống như tạo đơn nghỉ)
-            .andWhere('op.startTime <= :endTime AND op.endTime >= :startTime', {
-                startTime: dto.startTime,
-                endTime: dto.endTime,
-            })
-            .getOne();
+        // check trùng lịch OT của từng nhân viên bằng 1 query để không bị n+1 nữa
+        if (employees.length > 0) {
+            const conflictOts = await this.otPlanEmployeeRepo
+                .createQueryBuilder('ope')
+                .leftJoin('ope.otPlan', 'op')
+                .where('ope.employeeId IN (:...employeeIds)', { employeeIds: employees.map(e => e.id) })
+                .andWhere('op.status IN (:...statuses)', { statuses: [OtPlanStatus.APPROVED, OtPlanStatus.PENDING] })
+                // phải không được trùng cả đơn đã tạo(pending, giống như tạo đơn nghỉ)
+                .andWhere('op.startTime <= :endTime AND op.endTime >= :startTime', {
+                    startTime: dto.startTime,
+                    endTime: dto.endTime,
+                })
+                .getMany();
 
-            if(conflictOt) {
-               throw new BadRequestException({
+            if (conflictOts.length > 0) {
+                const conflictEmployeeIds = new Set(conflictOts.map(c => c.employeeId));
+                
+                const conflictNames = employees
+                    .filter(e => conflictEmployeeIds.has(e.id))
+                    .map(e => e.name)
+                    .join(', ');
+
+                throw new BadRequestException({
                     ...OT_ERRORS.SCHEDULE_CONFLICT_OT,
-                    details: `Nhân viên ${employee.name} có lịch OT trùng`,
+                    details: `Nhân viên ${conflictNames} có lịch OT trùng`,
                 });
             }
         }
 
         // phòng IT tự động approve luôn khi tạo đơn
         const isItDepartment = creator.departmentName === IT_DEPARTMENT;
+
+        // Tìm cấu hình Admin trước khi mở Transaction để tránh Lock Database vô ích
+        let admin: User | null = null;
+        if (!isItDepartment) {
+            admin = await this.userRepo.findOneBy({ role: UserRole.ADMIN });
+            if (!admin) {
+                throw new BadRequestException(OT_ERRORS.ADMIN_NOT_FOUND);
+            }
+        }
 
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
@@ -140,15 +156,16 @@ export class OtService {
 
             await queryRunner.manager.save(OtPlanEmployee, otPlanEmployees);
 
+            await queryRunner.commitTransaction();
+
             // Gửi mail cho các nhân viên trong background
             if(isItDepartment) {
                 Promise.all(
                     employees.map((emp) => 
                         this.mailService.sendMailWithRetry(
-                            () => this.mailService.sendOtPlanSubmitted(
+                            () => this.mailService.sendOtPlanApproved(
                                 emp.email,
-                                creator.name,
-                                creator.departmentName,
+                                emp.name,
                                 startTime.toDate(),
                                 endTime.toDate(),
                                 dto.reason,
@@ -157,15 +174,8 @@ export class OtService {
                         ).catch(e => console.error(`Lỗi gửi mail OT cho ${emp.email}`, e))
                     )
                 );
-            } else {
-                const admin  = await this.userRepo.findOneBy({
-                    role: UserRole.ADMIN,
-                })
-
-                if(!admin) {
-                    throw new BadRequestException(OT_ERRORS.ADMIN_NOT_FOUND);
-                }
-
+            }
+            if (!isItDepartment && admin) {
                 this.mailService.sendMailWithRetry(
                     () => this.mailService.sendOtPlanSubmitted(
                         admin.email,
@@ -179,8 +189,10 @@ export class OtService {
                 ).catch(e => console.error(`Lỗi gửi mail OT cho admin ${admin.email}`, e));
             }
 
-            await queryRunner.commitTransaction();
-            return savedPlan;
+            return {
+                message: 'Tạo kế hoạch OT thành công',
+                data: savedPlan
+            };
         } catch (error) {
             await queryRunner.rollbackTransaction();
             throw error;
@@ -280,14 +292,10 @@ export class OtService {
             }
         );
 
-        console.log('updateResult', updateResult);
-        console.log('updateResult.affected', updateResult.affected);
-
         if(updateResult.affected === 0) {
             throw new BadRequestException(OT_ERRORS.OT_PLAN_NOT_PENDING);
         }
 
-        // Gửi mail thông báo lại cho ông Quản lý (Creator) biết là đơn bị vứt sọt rác
         this.mailService.sendMailWithRetry(
             () => this.mailService.sendOtPlanRejected(
                 otPlan.creator.email,
