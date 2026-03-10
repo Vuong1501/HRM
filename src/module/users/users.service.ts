@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { APP_ERRORS } from 'src/common/errors/app.errors';
 // import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
@@ -25,7 +26,7 @@ export class UsersService {
   async getMe(id: number) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user) {
-      throw new Error('Không tồn tại user');
+      throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
     return this.toResponse(user);
   }
@@ -33,7 +34,7 @@ export class UsersService {
   async findOne(id: number) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
     return this.toResponse(user);
   }
@@ -41,7 +42,7 @@ export class UsersService {
   async findOneEntity(id: number) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
     return user;
   }
