@@ -7,4 +7,8 @@ export const HR_ERRORS = {
     code: 'INVITE_FAILED_UNKNOWN',
     message: 'Lỗi không xác định',
   },
+  FILE_REQUIRED: {
+    code: 'FILE_REQUIRED',
+    message: 'Vui lòng upload file',
+  },
 } as const;
