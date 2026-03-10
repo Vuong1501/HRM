@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In, EntityManager, DataSource } from 'typeorm';
@@ -8,6 +8,7 @@ import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { LEAVE_CONSTANTS } from 'src/common/constants/leave.constants';
 import dayjs from 'dayjs';
+import { LEAVE_ERRORS } from './leave.errors';
 
 @Injectable()
 export class LeaveAccrualService {
@@ -118,7 +119,7 @@ export class LeaveAccrualService {
       this.logger.warn(
         ` User ${user.id} chưa có startDate, bỏ qua backfill`,
       );
-      throw new Error('Nhân viên chưa có startDate');
+      throw new BadRequestException(LEAVE_ERRORS.START_DATE_REQUIRED);
     }
 
     const startDate = dayjs(user.startDate);
@@ -127,7 +128,7 @@ export class LeaveAccrualService {
 
     // Kiểm tra nhân viên có startDate hợp lệ không
     if (startDate.isAfter(now)) {
-      throw new Error('startDate không được là ngày trong tương lai');
+      throw new BadRequestException(LEAVE_ERRORS.START_DATE_NOT_FUTURE);
     }
 
     // Tháng bắt đầu tính trong năm hiện tại

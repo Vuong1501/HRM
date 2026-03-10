@@ -115,4 +115,12 @@ export const LEAVE_ERRORS = {
     code: 'VIEW_ATTACHMENT_FORBIDDEN',
     message: 'Bạn không có quyền xem file này',
   },
+  START_DATE_REQUIRED: {
+    code: 'START_DATE_REQUIRED',
+    message: 'Nhân viên chưa có startDate',
+  },
+  START_DATE_NOT_FUTURE: {
+    code: 'START_DATE_NOT_FUTURE',
+    message: 'startDate không được là ngày trong tương lai',
+  },
 } as const;
