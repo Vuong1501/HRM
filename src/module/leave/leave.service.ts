@@ -108,6 +108,9 @@ export class LeaveService {
   //Tạo đơn xin nghỉ
   async createLeaveRequest(userId: number, dto: CreateLeaveRequestDto, files: Express.Multer.File[]) {
 
+    // Validate sơ bộ Logic của các loại Phép có kèm lý do hay không
+    this.validateLeaveSubType(dto.leaveType, dto.leaveSubType);
+
     // nghỉ bảo hiểm bắt buộc có file đính kèm
     if (dto.leaveType === LeaveType.INSURANCE && (!files || files.length === 0)) {
       throw new BadRequestException(LEAVE_ERRORS.INSURANCE_REQUIRES_ATTACHMENT);
@@ -174,10 +177,25 @@ export class LeaveService {
       startDate,
     );
 
-    // Tạo đơn nghỉ
-    await this.validateLeaveSubType(dto.leaveType, dto.leaveSubType);
+    const lead = await this.userRepo.findOne({
+      where : {
+        departmentName: user.departmentName,
+        role: UserRole.DEPARTMENT_LEAD
+      }
+    });
 
-    //tạo transaction
+    // Upload lên MinIO trước
+    let uploadedFilesData: { file: Express.Multer.File; fileKey: string }[] = [];
+    if (files && files.length > 0) {
+      uploadedFilesData = await Promise.all(
+        files.map(async (file) => {
+          const fileKey = await this.storageService.uploadFile(file, 'leave');
+          return { file, fileKey };
+        })
+      );
+    }
+
+    // bắt đầu transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -197,32 +215,24 @@ export class LeaveService {
       });
       const savedLeave = await queryRunner.manager.save(leaveRequest);
 
-      // lưu file nếu có file
-      if (files && files.length > 0) {
-        const attachments = await Promise.all(
-          files.map(async (file) => {
-            const fileKey = await this.storageService.uploadFile(file, 'leave');  // ← upload lên MinIO
-
-            return queryRunner.manager.create(LeaveAttachment, {
-              leaveRequestId: savedLeave.id,
-              originalName: file.originalname,
-              fileKey,          
-              size: file.size,
-              mimeType: file.mimetype,
-            });
-          }),
-        );
-        await queryRunner.manager.save(attachments);
+      // lưu file đã tải lên mảng ở trên
+      if (uploadedFilesData.length > 0) {
+        const attachments = uploadedFilesData.map((data) => {
+          return queryRunner.manager.create(LeaveAttachment, {
+            leaveRequestId: savedLeave.id,
+            originalName: data.file.originalname,
+            fileKey: data.fileKey,          
+            size: data.file.size,
+            mimeType: data.file.mimetype,
+          });
+        });
+        await queryRunner.manager.save(LeaveAttachment, attachments);
       }
-      const lead = await this.userRepo.findOne({
-        where : {
-          departmentName: user.departmentName,
-          role: UserRole.DEPARTMENT_LEAD
-        }
-      })
-    
+
+      await queryRunner.commitTransaction();
+
       if(lead){
-        await this.mailService.sendMailWithRetry(
+        this.mailService.sendMailWithRetry(
           () => this.mailService.sendLeaveRequestNotification(
             lead.email,
             user.name,
@@ -231,9 +241,8 @@ export class LeaveService {
             endDate.toDate(),
           ),
           'SEND_LEAVE_NOTIFICATION_FAILED',
-        );
+        ).catch(e => console.error(`Lỗi gửi mail thông báo nghỉ phép cho Lead`, e));
       }
-      await queryRunner.commitTransaction();
       
       return {
         message: 'Tạo đơn xin nghỉ thành công',
@@ -247,6 +256,11 @@ export class LeaveService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
+      if (uploadedFilesData.length > 0) {
+        Promise.all(
+          uploadedFilesData.map((data) => this.storageService.deleteFile(data.fileKey).catch(() => {}))
+        );
+      }
       throw error;
     } finally {
       await queryRunner.release();
@@ -308,7 +322,7 @@ export class LeaveService {
     const currentYear = dayjs().year();
     const balance = await this.getOrCreateBalance(leave.userId, currentYear);
     let warning: string | undefined;
-    if((leave.leaveType === LeaveType.UNPAID) && Number(balance.unpaidLeaveUsed) >= 30) {
+    if((leave.leaveType === LeaveType.UNPAID) && Number(balance.unpaidLeaveUsed) >= LEAVE_CONSTANTS.MAX_UNPAID_LEAVES_PER_YEAR) {
         warning = `Nhân viên này đã nghỉ không lương ${balance.unpaidLeaveUsed} ngày trong năm nay.`;
     }
 
@@ -332,7 +346,7 @@ export class LeaveService {
         throw new BadRequestException(LEAVE_ERRORS.CANNOT_APPROVE);
       }
 
-      // 2. Chỉnh sửa bảng con (Quỹ phép)
+      // Chỉnh sửa bảng con (Quỹ phép)
       const startDate = dayjs(leave.startDate).startOf('day');
       const endDate = dayjs(leave.endDate).startOf('day');
       if (leave.leaveType === LeaveType.COMPENSATORY) {
@@ -344,7 +358,7 @@ export class LeaveService {
         );
 
         balance.compensatoryBalance =
-          Number(balance.compensatoryBalance) - leaveDays * 8;
+          Number(balance.compensatoryBalance) - leaveDays * LEAVE_CONSTANTS.HOURS_PER_DAY;
       } else {
         balance.annualLeaveUsed =
           Number(balance.annualLeaveUsed) +
@@ -356,11 +370,9 @@ export class LeaveService {
       }
 
       await queryRunner.manager.save(LeaveBalance, balance);
-      
-      // 3. Chốt data DB trước
       await queryRunner.commitTransaction();
 
-      // 4. Gửi mail ngầm ra ngoài (Fire-and-forget)
+      //Gửi mail 
       const hrs = await this.userRepo.find({
         where: { role: UserRole.HR },
       });
@@ -460,7 +472,7 @@ export class LeaveService {
       ? await this.getOrCreateBalance(leaveRequest.userId, currentYear)
       : null;
     // bắt đầu transaction
-    return await this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
 
       if (leaveRequest.status === LeaveRequestStatus.APPROVED && balance) {
         const startDate = dayjs(leaveRequest.startDate).startOf('day');
@@ -473,7 +485,7 @@ export class LeaveService {
             leaveRequest.endHalfDayType,
           );
           // Hoàn trả giờ bù
-          balance.compensatoryBalance = Number(balance.compensatoryBalance) + leaveDays * 8;
+          balance.compensatoryBalance = Number(balance.compensatoryBalance) + leaveDays * LEAVE_CONSTANTS.HOURS_PER_DAY;
         } else {
           // Hoàn trả phép năm và không lương 
           balance.annualLeaveUsed = Number(balance.annualLeaveUsed) - Number(leaveRequest.paidLeaveDeduction);
@@ -482,13 +494,8 @@ export class LeaveService {
         await manager.save(balance);
       }
 
-    // Xóa file trên MinIO thay vì disk
+      // Xóa trong bảng DB
       if (leaveRequest.attachments?.length > 0) {
-        await Promise.all(
-          leaveRequest.attachments.map((att) =>
-            this.storageService.deleteFile(att.fileKey).catch(() => {}),
-          ),
-        );
         await manager.delete(LeaveAttachment, { leaveRequestId: leaveRequest.id });
       }
 
@@ -501,7 +508,18 @@ export class LeaveService {
       return {
         message: 'Đã hủy đơn nghỉ'
       };
-    })
+    });
+
+    // Chỉ khi transaction OK, mới kích hoạt xoá file trên MinIO
+    if (leaveRequest.attachments?.length > 0) {
+      Promise.all(
+        leaveRequest.attachments.map((att) =>
+          this.storageService.deleteFile(att.fileKey).catch(() => {}),
+        ),
+      );
+    }
+
+    return result;
   }
 
   //cập nhật đơn xin nghỉ
@@ -529,6 +547,10 @@ export class LeaveService {
       throw new BadRequestException(LEAVE_ERRORS.ONLY_UPDATE_PENDING);
     }
     Object.assign(leave, dto);
+
+    // Kiểm tra tính hợp lệ của Sự ghép cặp Loại Phép - Lý do Phép
+    this.validateLeaveSubType(leave.leaveType, leave.leaveSubType);
+
     const startDate = dayjs(leave.startDate).startOf('day');
     const endDate = dayjs(leave.endDate).startOf('day');
 
@@ -593,41 +615,52 @@ export class LeaveService {
       }
     }
 
+    // Upload các file mới lên thẳng MinIO trước
+    let uploadedFilesData: { file: Express.Multer.File; fileKey: string }[] = [];
+    if (files && files.length > 0) {
+      uploadedFilesData = await Promise.all(
+        files.map(async (file) => {
+          const fileKey = await this.storageService.uploadFile(file, 'leave');
+          return { file, fileKey };
+        })
+      );
+    }
+
     //transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
       await queryRunner.manager.save(leave);
+      
+      let oldFileKeysToDelete: string[] = [];
+
       // lưu file mới
       if (files && files.length > 0) {
-        //xóa file cũ
+        // lưu list records file cũ để tí xoá MinIO
         if (leave.attachments?.length) {
-          await Promise.all(
-            leave.attachments.map((att) =>
-              this.storageService.deleteFile(att.fileKey).catch(() => {}),
-            ),
-          );
+          oldFileKeysToDelete = leave.attachments.map(att => att.fileKey);
           await queryRunner.manager.delete(LeaveAttachment, { leaveRequestId: leave.id });
         }
-        // lưu file mới
-        const attachments = await Promise.all(
-          files.map(async (file) => {
-            const fileKey = await this.storageService.uploadFile(file, 'leave');
-
-            return queryRunner.manager.create(LeaveAttachment, {
-              leaveRequestId: leave.id, 
-              originalName: file.originalname,
-              fileKey,         
-              size: file.size,
-              mimeType: file.mimetype,
-            });
-          }),
-        );
-        await queryRunner.manager.save(attachments);
+        // lưu records file mới
+        const attachments = uploadedFilesData.map((data) => {
+          return queryRunner.manager.create(LeaveAttachment, {
+            leaveRequestId: leave.id, 
+            originalName: data.file.originalname,
+            fileKey: data.fileKey,         
+            size: data.file.size,
+            mimeType: data.file.mimetype,
+          });
+        });
+        await queryRunner.manager.save(LeaveAttachment, attachments);
       }
 
       await queryRunner.commitTransaction();
+
+      // Chỉ xoá trên MinIO sau khi Transaction ngon nghẻ
+      if (oldFileKeysToDelete.length > 0) {
+        Promise.all(oldFileKeysToDelete.map(key => this.storageService.deleteFile(key).catch(() => {})));
+      }
       return {
         message: 'Cập nhật đơn nghỉ thành công',
         data: leave,
@@ -635,6 +668,11 @@ export class LeaveService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
+      if (uploadedFilesData.length > 0) {
+        Promise.all(
+          uploadedFilesData.map((data) => this.storageService.deleteFile(data.fileKey).catch(() => {}))
+        );
+      }
       throw error;
     } finally {
       await queryRunner.release();
@@ -794,26 +832,21 @@ export class LeaveService {
     );
   }
 
-  private async validateLeaveSubType(leaveType: LeaveType, leaveSubType?: string) {
+  private validateLeaveSubType(leaveType: LeaveType, leaveSubType?: string | null) {
     if (
       leaveType === LeaveType.PAID ||
       leaveType === LeaveType.UNPAID ||
       leaveType === LeaveType.COMPENSATORY
     ) {
-    if (leaveSubType) {
-      throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_NOT_ALLOWED);
+      if (leaveSubType) {
+        throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_NOT_ALLOWED);
+      }
+      return;
     }
-    return;
-    }
+    
+    // Nếu là Phép có Lương/Phép Bảo Hiểm
     if (!leaveSubType) {
       throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_REQUIRED);
-    }
-    const config = await this.getSubTypeLimit(
-      leaveType,
-      leaveSubType,
-    );
-    if (!config) {
-      throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_INVALID);
     }
   }
 
