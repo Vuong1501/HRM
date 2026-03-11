@@ -6,6 +6,8 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Param,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { HrService } from './hr.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -39,6 +41,15 @@ export class HrController {
   @ApiBearerAuth()
   invite(@Body() userDto: InviteDto) {
     return this.hrService.invite(userDto);
+  }
+
+  @Post('invite/resend/:outboxId')
+  @ApiOperation({ summary: 'Gửi lại email mời (dành cho Admin khi gửi lỗi)' })
+  @ApiResponse({ status: 200, description: 'Đã đưa vào hàng đợi gửi lại thành công' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy lịch sử gửi email' })
+  @ApiBearerAuth()
+  resendInviteEmail(@Param('outboxId', ParseIntPipe) outboxId: number) {
+    return this.hrService.resendInviteEmail(outboxId);
   }
 
   @Post('invite/upload')

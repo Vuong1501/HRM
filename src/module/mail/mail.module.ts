@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { MailService } from './mail.service';
+import { MailSweeperService } from './mail-sweeper.service';
 import { MailController } from './mail.controller';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { join } from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { OutboxMail } from './entities/outbox-mail.entity';
 
 @Module({
   imports: [
@@ -31,9 +34,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         },
       }),
     }),
+    TypeOrmModule.forFeature([OutboxMail]),
   ],
   controllers: [MailController],
-  providers: [MailService],
+  providers: [MailService, MailSweeperService],
   exports: [MailService],
 })
 export class MailModule {}

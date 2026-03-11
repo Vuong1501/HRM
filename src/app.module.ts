@@ -30,7 +30,7 @@ import { CalendarModule } from './module/calendar/calendar.module';
         synchronize: false,
         autoLoadEntities: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        logging: configService.get<string>('NODE_ENV') === 'production' ? ['error'] : ['query', 'error'],
+        logging: configService.get<string>('NODE_ENV') === 'production' ? ['error'] : [ 'error'],
       }),
     }),
     ScheduleModule.forRoot(),

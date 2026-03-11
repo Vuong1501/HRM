@@ -1,5 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { OutboxMail } from '../mail/entities/outbox-mail.entity';
+import { OutboxStatus } from 'src/common/enums/outbox-status.enum';
 import { User } from '../users/entities/user.entity';
 import { DataSource, Repository } from 'typeorm';
 import { InviteDto } from './dto/invite.dto';
@@ -9,6 +11,7 @@ import { MailService } from '../mail/mail.service';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { InviteResultDto } from './dto/invite-result.dto';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 import { HR_ERRORS } from './hr.errors';
@@ -26,14 +29,18 @@ import {
 
 @Injectable()
 export class HrService {
+  private readonly logger = new Logger(HrService.name);
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(OutboxMail)
+    private outboxRepository: Repository<OutboxMail>,
     private mailService: MailService,
     private configService: ConfigService,
     private dataSource: DataSource
   ) {}
 
+  // api mời 1 người
   async invite(userDto: InviteDto) {
     const existed = await this.userRepository.findOne({
       where: { email: userDto.email },
@@ -43,14 +50,17 @@ export class HrService {
     const frontendUrl = this.configService.get<string>('BACKEND_URL');
     const link = `${frontendUrl}/invite/accept?token=${token}`;
 
-    await this.dataSource.transaction(async (manager) => {
-      const entity = manager.create(User, {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const entity = queryRunner.manager.create(User, {
         email: userDto.email,
         name: userDto.name,
         role: userDto.role,
         status: UserStatus.INVITED,
         inviteToken: token,
-
         dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
         departmentName: userDto.departmentName,
         address: userDto.address,
@@ -58,92 +68,167 @@ export class HrService {
         phoneNumber: userDto.phoneNumber,
         startDate: dayjs(userDto.startDate).toDate(),
       });
-      const user = await manager.save(entity);
-      // gửi mail
-      await this.mailService.sendMailWithRetry(
+      const user = await queryRunner.manager.save(entity);
+
+      const outbox = queryRunner.manager.create(OutboxMail, {
+        recipient: userDto.email,
+        template: 'invite',
+        contextJson: JSON.stringify({ link }),
+        status: OutboxStatus.PENDING,
+      });
+      const savedOutbox = await queryRunner.manager.save(outbox);
+
+      await queryRunner.commitTransaction();
+
+      // Gửi mail trong background
+      this.mailService.sendMailWithRetry(
         () => this.mailService.sendInvite(user.email, link),
         'SEND_INVITE_FAILED',
-      );
-    })
+        savedOutbox.id,
+      ).catch((e) => this.logger.error('Gửi mail thất bại:', e));
+
+      return {
+        success: true,
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // api resend lại mail khi lỗi sau tất cả
+  async resendInviteEmail(outboxId: number) {
+    const outbox = await this.outboxRepository.findOne({ where: { id: outboxId } });
+    if (!outbox) {
+      throw new ConflictException({
+        code: 'OUTBOX_NOT_FOUND',
+        message: 'Không tìm thấy lịch sử gửi email này',
+      });
+    }
+
+    if (outbox.status === OutboxStatus.SUCCESS) {
+      throw new ConflictException({
+        code: 'MAIL_ALREADY_SENT',
+        message: 'Email này đã được gửi thành công trước đó',
+      });
+    }
+
+    await this.outboxRepository.update(outboxId, { status: OutboxStatus.PENDING, retryCount: 0 });
+
+    const context = JSON.parse(outbox.contextJson);
+
+    this.mailService.sendMailWithRetry(
+      () => this.mailService.sendInvite(outbox.recipient, context.link),
+      'SEND_INVITE_FAILED',
+      outbox.id,
+      false
+    ).catch(e => this.logger.error('Admin resend mail failed', e));
+
     return {
       success: true,
+      message: 'Email đã được đưa vào hàng đợi gửi lại',
     };
   }
 
-async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
-  const result: InviteResultDto = { success: [], failed: [] };
+  // api mời nhiều người cùng lúc
+  async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
+    const result: InviteResultDto = { success: [], failed: [] };
 
-  const emails = dto.users.map((u) => u.email);
-  const existingUsers = await this.userRepository.find({
-    where: emails.map((email) => ({ email })),
-    select: ['email'],
-  });
-  const existingEmails = new Set(existingUsers.map((u) => u.email));
+    const emails = dto.users.map((u) => u.email);
+    const existingUsers = await this.userRepository.find({
+      where: emails.map((email) => ({ email })),
+      select: ['email'],
+    });
+    const existingEmails = new Set(existingUsers.map((u) => u.email));
 
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+    // Mảng gom các thông tin mail cần gửi ngầm sau khi chốt DB
+    const mailQueue: { email: string; link: string; outboxId: number }[] = [];
 
-  try {
-    for (const userDto of dto.users) {
-      if (existingEmails.has(userDto.email)) {
-        result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
-        continue;
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const userDto of dto.users) {
+        if (existingEmails.has(userDto.email)) {
+          result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
+          continue;
+        }
+
+        await queryRunner.query('SAVEPOINT user_savepoint');
+
+        try {
+          const token = randomUUID();
+          const entity = queryRunner.manager.create(User, {
+            email: userDto.email,
+            name: userDto.name,
+            role: userDto.role,
+            status: UserStatus.INVITED,
+            inviteToken: token,
+            dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
+            departmentName: userDto.departmentName,
+            address: userDto.address,
+            sex: userDto.sex,
+            phoneNumber: userDto.phoneNumber,
+            startDate: dayjs(userDto.startDate).toDate(),
+          });
+
+          const user = await queryRunner.manager.save(entity);
+
+          const frontendUrl = this.configService.getOrThrow<string>('BACKEND_URL');
+          const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
+
+          // Lưu Trạng thái hàng đợi Email (Đồng thời trong 1 Savepoint)
+          const outbox = queryRunner.manager.create(OutboxMail, {
+            recipient: userDto.email,
+            template: 'invite',
+            contextJson: JSON.stringify({ link: inviteLink }),
+            status: OutboxStatus.PENDING,
+          });
+          const savedOutbox = await queryRunner.manager.save(outbox);
+
+          await queryRunner.query('RELEASE SAVEPOINT user_savepoint');
+
+          // Cập nhật existingEmails để các bản ghi sau trong file trùng cũng bị chặn đứng
+          existingEmails.add(user.email);
+
+          // Cất mail vào hàng đợi chuẩn bị nổ cho Task Background
+          mailQueue.push({ email: user.email, link: inviteLink, outboxId: savedOutbox.id });
+          result.success.push(userDto);
+
+        } catch (error) {
+          await queryRunner.query('ROLLBACK TO SAVEPOINT user_savepoint');
+          result.failed.push({
+            user: userDto,
+            reason: error instanceof Error ? error.message : 'Lỗi không xác định',
+          });
+        }
       }
 
+      await queryRunner.commitTransaction();
 
-      await queryRunner.query('SAVEPOINT user_savepoint');
+      Promise.all(
+        mailQueue.map(({ email, link, outboxId }) =>
+          this.mailService.sendMailWithRetry(
+            () => this.mailService.sendInvite(email, link),
+            'SEND_INVITE_FAILED',
+            outboxId
+          ).catch(e => this.logger.error(`Bulk Background send mail failed for ${email}`, e))
+        )
+      );
 
-      try {
-        const token = randomUUID();
-        const entity = queryRunner.manager.create(User, {
-          email: userDto.email,
-          name: userDto.name,
-          role: userDto.role,
-          status: UserStatus.INVITED,
-          inviteToken: token,
-          dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
-          departmentName: userDto.departmentName,
-          address: userDto.address,
-          sex: userDto.sex,
-          phoneNumber: userDto.phoneNumber,
-          startDate: dayjs(userDto.startDate).toDate(),
-        });
+      return result;
 
-        const user = await queryRunner.manager.save(entity);
-
-        const frontendUrl = this.configService.getOrThrow<string>('BACKEND_URL');
-        const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
-
-        await this.mailService.sendMailWithRetry(
-          () => this.mailService.sendInvite(user.email, inviteLink),
-          'SEND_INVITE_FAILED',
-        );
-
-
-        await queryRunner.query('RELEASE SAVEPOINT user_savepoint');
-        result.success.push(userDto);
-
-      } catch (error) {
-
-        await queryRunner.query('ROLLBACK TO SAVEPOINT user_savepoint');
-        result.failed.push({
-          user: userDto,
-          reason: error instanceof Error ? error.message : 'Lỗi không xác định',
-        });
-      }
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    await queryRunner.commitTransaction();
-    return result;
-
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    throw error;
-  } finally {
-    await queryRunner.release();
   }
-}
 
   async previewBulkInvite(users: InviteDto[], rowErrors: any[]) {
     const emails = users.map((u) => u.email);
@@ -172,6 +257,7 @@ async bulkInvite(dto: BulkInviteDto): Promise<InviteResultDto> {
       invalid: rowErrors,
     };
   }
+
   async processBulkInviteFile(fileBuffer: Buffer) {
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];

@@ -3,6 +3,10 @@ import { MailerService } from '@nestjs-modules/mailer';
 import dayjs from 'dayjs';
 import { MAIL_ERRORS } from './mail.errors';
 import { Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { OutboxMail } from './entities/outbox-mail.entity';
+import { OutboxStatus } from '../../common/enums/outbox-status.enum';
 
 const MAIL_MAX_RETRIES = 5;
 const MAIL_RETRY_DELAY_MS = 2000;
@@ -12,16 +16,24 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   constructor(
     private readonly mailerService: MailerService,
+    @InjectRepository(OutboxMail)
+    private readonly outboxRepo: Repository<OutboxMail>,
   ) {}
 
   async sendMailWithRetry(
     sendFn: () => Promise<void>,
     errorCode: keyof typeof MAIL_ERRORS,
-    maxRetries: number = MAIL_MAX_RETRIES,
+    outboxId?: number,
+    isCronjobSweep: boolean = false,
   ): Promise<void> {
+    const maxRetries = isCronjobSweep ? 1 : MAIL_MAX_RETRIES;
+    const delayMsConfig = MAIL_RETRY_DELAY_MS;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await sendFn();
+        if (outboxId) {
+          await this.outboxRepo.update(outboxId, { status: OutboxStatus.SUCCESS });
+        }
         return;
       } catch (error) {
         const isLastAttempt = attempt === maxRetries;
@@ -34,12 +46,22 @@ export class MailService {
           this.logger.error(
             `[${MAIL_ERRORS[errorCode].code}] failed after ${maxRetries} retries`
           );
-          throw new InternalServerErrorException(MAIL_ERRORS[errorCode]);
+
+          if (outboxId) {
+            await this.outboxRepo.update(outboxId, {
+              status: OutboxStatus.FAILED,
+              errorReason: error.message,
+            }).catch(e => this.logger.error('Failed to update outbox status to FAILED', e));
+          }
+
+          throw new InternalServerErrorException({
+            ...MAIL_ERRORS[errorCode],
+            details: error.message,
+          });
         }
 
-        // Exponential backoff: 2s -> 4s -> 8s -> 16s
-        const delayMs = MAIL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        const delayMs = delayMsConfig * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
   }
