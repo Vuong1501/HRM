@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
@@ -12,7 +12,15 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { OT_ERRORS } from './ot.errors';
 import { MailService } from '../mail/mail.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { SubmitOtTicketDto } from './dto/submit-ot-ticket.dto';
+import { OtTimeSegmentHelper } from './helpers/ot-time-segment.helper';
+import { OtCompensatoryHelper } from './helpers/ot-compensatory.helper';
+import { OT_TICKET_CONSTANTS } from './ot-ticket.constants';
+import { OtTimeSegment } from './entities/ot-time-segment.entity';
+import { OtMode } from 'src/common/enums/ot/ot-mode.enum';
+import { LeaveBalance } from '../leave/entities/leave-balance.entity';
 import dayjs from 'dayjs';
+import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 
 
 const IT_DEPARTMENT = 'IT';
@@ -23,6 +31,7 @@ const OT_WEEKEND_MAX_HOURS = 8;
 
 @Injectable()
 export class OtService {
+    private logger = new Logger(OtService.name);
     constructor(
         @InjectRepository(OtPlan)
         private otPlanRepo: Repository<OtPlan>,
@@ -33,10 +42,342 @@ export class OtService {
         @InjectRepository(User)
         private userRepo: Repository<User>,
 
+        @InjectRepository(LeaveBalance)
+        private leaveBalanceRepo: Repository<LeaveBalance>,
+
+        @InjectRepository(OtTimeSegment)
+        private otTimeSegmentRepo: Repository<OtTimeSegment>,
+
         private dataSource: DataSource,
         private mailService: MailService,
         private calendarService: CalendarService,
+        private readonly otTimeSegmentHelper: OtTimeSegmentHelper,
+        private readonly otCompensatoryHelper: OtCompensatoryHelper,
     ) {}
+
+    async checkIn(user: User, otPlanEmployeeId: number) {
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: otPlanEmployeeId },
+            relations: ['otPlan'],
+        });
+
+        if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+
+        if (ticket.employeeId !== user.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.PENDING) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_INPROGRESS);
+        }
+
+        const now = dayjs();
+        const otStartDate = dayjs(ticket.otPlan.startTime).startOf('day');
+        const otEndDateExpired = dayjs(ticket.otPlan.endTime).add(1, 'day').endOf('day');
+
+        if (now.isBefore(otStartDate)) {
+            throw new BadRequestException(OT_ERRORS.CHECKIN_NOT_ALLOWED);
+        }
+
+        if (now.isAfter(otEndDateExpired)) {
+            throw new BadRequestException(OT_ERRORS.CHECKIN_EXPIRED);
+        }
+
+        const updateResult = await this.otPlanEmployeeRepo.update(
+            { 
+                id: otPlanEmployeeId, 
+                status: OtPlanEmployeeStatus.PENDING,
+                employeeId: user.id 
+            },
+            { 
+                checkInTime: now.toDate(),
+                status: OtPlanEmployeeStatus.INPROGRESS 
+            }
+        );
+
+        if (updateResult.affected === 0) {
+            throw new BadRequestException(OT_ERRORS.ALREADY_CHECKED_IN);
+        }
+
+        return {
+            message: 'Check-in thành công',
+            data: {
+                checkInTime: now.toDate(),
+                status: OtPlanEmployeeStatus.INPROGRESS
+            }
+        };
+    }
+
+    async checkOut(user: User, otPlanEmployeeId: number) {
+
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: otPlanEmployeeId },
+            relations: ['otPlan'],
+        });
+
+        if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+
+        if (ticket.employeeId !== user.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.INPROGRESS || !ticket.checkInTime) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_INPROGRESS);
+        }
+
+        if (ticket.checkOutTime) {
+            throw new BadRequestException(OT_ERRORS.ALREADY_CHECKED_OUT);
+        }
+
+        const now = dayjs();
+        const checkInTime = dayjs(ticket.checkInTime);
+
+        // Phải checkout sau thời gian checkin ít nhất 1 giờ
+        const minCheckoutTime = checkInTime.add(OT_TICKET_CONSTANTS.MIN_CHECKOUT_AFTER_CHECKIN_HOURS, 'hour');
+        if (now.isBefore(minCheckoutTime)) {
+            throw new BadRequestException(OT_ERRORS.CHECKOUT_TOO_EARLY);
+        }
+
+        const maxAllowedHours = OT_TICKET_CONSTANTS.AUTO_CHECKOUT_TIMEOUT_HOURS;
+        const maxCheckoutTime = checkInTime.add(maxAllowedHours, 'hour');
+
+        if (now.isAfter(maxCheckoutTime)) {
+             throw new BadRequestException(OT_ERRORS.CHECKOUT_EXPIRED);
+        }
+
+        const totalMinutes = now.diff(checkInTime, 'minute');
+        
+        ticket.checkOutTime = now.toDate();
+        ticket.actualMinutes = totalMinutes;
+
+        // chia ra ranh giới từng khung giờ
+        const segmentsData = await this.otTimeSegmentHelper.splitIntoSegments(
+            ticket.checkInTime,
+            ticket.checkOutTime,
+        );
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            await queryRunner.manager.save(OtPlanEmployee, ticket);
+
+            const segmentsEntities = segmentsData.map(s => 
+                queryRunner.manager.create(OtTimeSegment, {
+                    otPlanEmployeeId: ticket.id,
+                    ...s
+                })
+            );
+            await queryRunner.manager.save(OtTimeSegment, segmentsEntities);
+
+            await queryRunner.commitTransaction();
+
+            return {
+                message: 'Check-out thành công',
+                data: {
+                    checkOutTime: ticket.checkOutTime,
+                    actualMinutes: ticket.actualMinutes,
+                }
+            };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    async submitOtTicket(user: User, otPlanEmployeeId: number, dto: SubmitOtTicketDto) {
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: otPlanEmployeeId },
+            relations: ['otPlan', 'otPlan.approver', 'otPlan.creator'],
+        });
+
+        if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+
+        if (ticket.employeeId !== user.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.INPROGRESS || !ticket.checkOutTime) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_INPROGRESS);
+        }
+        
+        let compensatoryMinutes = 0;
+        let otMinutes = ticket.actualMinutes;
+
+        if (dto.mode === OtMode.COMPENSATORY) {
+            if (ticket.actualMinutes < OT_TICKET_CONSTANTS.MIN_COMPENSATORY_HOURS * 60) {
+                throw new BadRequestException(OT_ERRORS.COMPENSATORY_NOT_ELIGIBLE);
+            }
+
+            const segments = await this.otTimeSegmentRepo.find({
+                where: { otPlanEmployeeId: ticket.id },
+                order: { startTime: 'ASC' },
+            });
+
+            const result = this.otCompensatoryHelper.calculateCompensatory(segments);
+            compensatoryMinutes = result.compensatoryMinutes;
+            otMinutes = result.otMinutes;
+        }
+
+        const updateResult = await this.otPlanEmployeeRepo.update(
+            { id: ticket.id, status: OtPlanEmployeeStatus.INPROGRESS },
+            {
+                mode: dto.mode,
+                workContent: dto.workContent,
+                note: dto.note || ticket.note,
+                compensatoryMinutes,
+                otMinutes,
+                status: OtPlanEmployeeStatus.SUBMITTED,
+            }
+        );
+
+        if (updateResult.affected === 0) {
+            throw new BadRequestException(OT_ERRORS.ALREADY_SUBMITTED);
+        }
+        this.mailService.sendMailWithRetry(
+            () => this.mailService.sendOtPlanSubmitted(
+                ticket.otPlan.creator.email,
+                user.name,
+                user.departmentName,
+                ticket.checkInTime,
+                ticket.checkOutTime,
+                `Báo cáo OT: ${dto.workContent}`,
+            ),
+            'SEND_OT_NOTIFICATION_FAILED',
+        ).catch(e => console.error(`Lỗi gửi mail OT Report cho ${ticket.otPlan.creator.email}`, e));
+
+        return {
+            message: 'Nộp báo cáo công việc OT thành công',
+        }
+    }
+
+    async approveOtTicket(approver: User, otPlanEmployeeId: number) {
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: otPlanEmployeeId },
+            relations: ['otPlan', 'employee'],
+        });
+
+        if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+
+        if ( ticket.otPlan.creatorId !== approver.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
+        }
+
+        const hr = this.userRepo.findOne({ where: { role: UserRole.HR } });
+        if (!hr) throw new NotFoundException(OT_ERRORS.HR_NOT_FOUND);
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const updateResult = await queryRunner.manager
+                .update(OtPlanEmployee, 
+                    {id: otPlanEmployeeId, status: OtPlanEmployeeStatus.SUBMITTED},
+                    {status: OtPlanEmployeeStatus.APPROVED}
+                )
+            
+            if (updateResult.affected === 0) {
+                throw new BadRequestException(OT_ERRORS.ALREADY_SUBMITTED);
+            }
+
+            // Nếu là nghỉ bù, cộng vào LeaveBalance
+            if (ticket.mode === OtMode.COMPENSATORY && ticket.compensatoryMinutes > 0) {
+                const currentYear = dayjs().year();
+                const compensatoryHours = ticket.compensatoryMinutes / 60;
+
+                await queryRunner.query(
+                    `INSERT INTO leave_balances (userId, year, compensatoryBalance)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                    compensatoryBalance = compensatoryBalance + ?`,
+                    [ticket.employeeId, currentYear, compensatoryHours, compensatoryHours]
+                );
+            }
+
+            await queryRunner.commitTransaction();
+            
+            // this.mailService.sendMailWithRetry(
+            //     () => this.mailService.sendOtPlanApproved(
+            //         ticket.employee.email,
+            //         ticket.employee.name,
+            //         ticket.checkInTime,
+            //         ticket.checkOutTime,
+            //         `Báo cáo OT của bạn đã được duyệt.`,
+            //     ),
+            //     'SEND_OT_NOTIFICATION_FAILED'
+            // ).catch(e => console.error('Lỗi gửi mail duyệt ticket', e));
+
+            // this.mailService.sendMailWithRetry(
+            //     () => this.mailService.sendOtPlanApproved(
+            //         hr.email,
+            //         ticket.employee.name,
+            //         ticket.checkInTime,
+            //         ticket.checkOutTime,
+            //         `Báo cáo OT của bạn đã được duyệt.`,
+            //     ),
+            //     'SEND_OT_NOTIFICATION_FAILED'
+            // ).catch(e => console.error('Lỗi gửi mail duyệt ticket', e));
+
+            return { message: 'Duyệt báo cáo OT thành công' };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    async rejectOtTicket(approver: User, otPlanEmployeeId: number, dto: RejectOtTicketDto) {
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: otPlanEmployeeId },
+            relations: ['otPlan', 'employee'],
+        });
+
+        if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+        if (!dto.reason) throw new BadRequestException(OT_ERRORS.REJECT_REASON_REQUIRED);
+
+        if (ticket.otPlan.creatorId !== approver.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
+        }
+
+        const updateResult = await this.otPlanEmployeeRepo.update(
+            { id: otPlanEmployeeId, status: OtPlanEmployeeStatus.SUBMITTED },
+            { 
+                status: OtPlanEmployeeStatus.REJECTED, 
+                rejectedReason: dto.reason 
+            }
+        );
+
+        if (updateResult.affected === 0) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
+        }
+
+        // Mail thông báo từ chối
+        // this.mailService.sendMailWithRetry(
+        //     () => this.mailService.sendOtPlanRejected(
+        //         ticket.employee.email,
+        //         ticket.employee.name,
+        //         ticket.checkInTime,
+        //         ticket.checkOutTime,
+        //         dto.reason,
+        //     ),
+        //     'SEND_OT_REJECTED_FAILED'
+        // ).catch(e => console.error('Lỗi gửi mail từ chối ticket', e));
+
+        return { message: 'Đã từ chối báo cáo OT' };
+    }
 
     async createOtPlan(creator: User, dto: CreateOtPlanDto) {
         const startTime = dayjs(dto.startTime);

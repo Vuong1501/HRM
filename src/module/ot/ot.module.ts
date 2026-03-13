@@ -9,10 +9,15 @@ import { LeaveRequest } from '../leave/entities/leave-request.entity';
 import { CaslModule } from '../casl/casl.module';
 import { MailModule } from '../mail/mail.module';
 import { CalendarModule } from '../calendar/calendar.module';
+import { OtTimeSegment } from './entities/ot-time-segment.entity';
+import { OtTimeSegmentHelper } from './helpers/ot-time-segment.helper';
+import { OtCompensatoryHelper } from './helpers/ot-compensatory.helper';
+import { OtTicketSweeperService } from './ot-ticket-sweeper.service';
+import { LeaveBalance } from '../leave/entities/leave-balance.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OtPlan, OtPlanEmployee, User, LeaveRequest]), CaslModule, MailModule, CalendarModule],
+  imports: [TypeOrmModule.forFeature([OtPlan, OtPlanEmployee, OtTimeSegment, User, LeaveRequest, LeaveBalance]), CaslModule, MailModule, CalendarModule],
   controllers: [OtController],
-  providers: [OtService]
+  providers: [OtService, OtTimeSegmentHelper, OtCompensatoryHelper, OtTicketSweeperService]
 })
 export class OtModule { }

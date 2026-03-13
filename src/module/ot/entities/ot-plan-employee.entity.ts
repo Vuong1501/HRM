@@ -9,9 +9,11 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
 import { OtPlanEmployeeStatus } from 'src/common/enums/ot/ot-employee-status.enum';
+import { OtMode } from 'src/common/enums/ot/ot-mode.enum';
 import { OtPlan } from './ot-plan.entity';
+import { OtTimeSegment } from './ot-time-segment.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('ot_plan_employees')
 @Index(['employeeId', 'status'])
@@ -39,8 +41,26 @@ export class OtPlanEmployee {
   @Column({ nullable: true })
   checkOutTime: Date;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
-  actualHours: number;
+  @Column({ type: 'int', nullable: true })
+  actualMinutes: number;
+
+  @Column({ type: 'enum', enum: OtMode, nullable: true })
+  mode: OtMode;
+
+  @Column({ type: 'int', nullable: true })
+  compensatoryMinutes: number;
+
+  @Column({ type: 'int', nullable: true })
+  otMinutes: number;
+
+  @Column({ type: 'text', nullable: true })
+  workContent: string;
+
+  @Column({ type: 'text', nullable: true })
+  note: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  rejectedReason: string | null;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -53,4 +73,9 @@ export class OtPlanEmployee {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'employeeId' })
   employee: User;
+
+  @OneToMany(() => OtTimeSegment, (segment) => segment.otPlanEmployee, {
+    cascade: true,
+  })
+  timeSegments: OtTimeSegment[];
 }

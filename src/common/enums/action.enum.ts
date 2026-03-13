@@ -9,4 +9,5 @@ export enum Action {
   Cancel = 'cancel',
   CheckIn = 'check_in',
   CheckOut = 'check_out',
+  Submit = 'submit',
 }
