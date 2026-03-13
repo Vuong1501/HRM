@@ -81,57 +81,59 @@ export class OtTicketSweeperService {
     }
 
     this.logger.log(`[OT_AUTO_CHECKOUT] Tìm thấy ${tickNeedCheckout.length} ticket cần auto checkout`);
+    const queryRunner = this.dataSource.createQueryRunner();
+    try {
 
-    for (const ticket of tickNeedCheckout) {
-      this.logger.log(`Auto-checking-out ticket ID: ${ticket.id}`);
-
-      const checkInTime = dayjs(ticket.checkInTime);
-      const planDurationMinutes = dayjs(ticket.otPlan.endTime).diff(dayjs(ticket.otPlan.startTime), 'minute');
-      const autoCheckOutTime = checkInTime.add(planDurationMinutes, 'minute').toDate();
-
-      // tính các khoảng ot của đơn ot này xem xem nó theo loại gì segments
-      const segmentsData = await this.otTimeSegmentHelper.splitIntoSegments(
-        ticket.checkInTime,
-        autoCheckOutTime,
-      );
-
-      const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
-      await queryRunner.startTransaction();
 
-      try {
-        const updateResult = await queryRunner.manager.update(OtPlanEmployee, 
-          {
-            id: ticket.id,
-            status: OtPlanEmployeeStatus.INPROGRESS,
-          },
-          {
-            checkOutTime: autoCheckOutTime,
-            actualMinutes: planDurationMinutes,
-            status: OtPlanEmployeeStatus.ABSENT,
-            note: (ticket.note || '') + ' [Hệ thống tự động check-out do quá 8 giờ]',
-          }
-        )
-        if(updateResult.affected === 0){
-          this.logger.debug(`[OT_AUTO_CHECKOUT] Ticket ${ticket.id} đã được checkout trước`);
-          await queryRunner.rollbackTransaction();
-          continue;
-        }
-        const segmentsEntities = segmentsData.map(s => 
-          queryRunner.manager.create(OtTimeSegment, {
-            otPlanEmployeeId: ticket.id,
-            ...s
-          })
+      for (const ticket of tickNeedCheckout) {
+        this.logger.log(`Auto-checking-out ticket ID: ${ticket.id}`);
+
+        const checkInTime = dayjs(ticket.checkInTime);
+        const planDurationMinutes = dayjs(ticket.otPlan.endTime).diff(dayjs(ticket.otPlan.startTime), 'minute');
+        const autoCheckOutTime = checkInTime.add(planDurationMinutes, 'minute').toDate();
+
+        // tính các khoảng ot của đơn ot này xem xem nó theo loại gì segments
+        const segmentsData = await this.otTimeSegmentHelper.splitIntoSegments(
+          ticket.checkInTime,
+          autoCheckOutTime,
         );
-        await queryRunner.manager.save(OtTimeSegment, segmentsEntities);
-        await queryRunner.commitTransaction();
-        this.logger.log(`[OT_AUTO_CHECKOUT] Đã auto checkout ticket ID: ${ticket.id}`);
-      } catch (e) {
-        await queryRunner.rollbackTransaction();
-        this.logger.error(`Failed to auto-checkout ticket ${ticket.id}: ${e.message}`);
-      } finally {
-        await queryRunner.release();
+        await queryRunner.startTransaction();
+        try {
+          const updateResult = await queryRunner.manager.update(OtPlanEmployee, 
+            {
+              id: ticket.id,
+              status: OtPlanEmployeeStatus.INPROGRESS,
+            },
+            {
+              checkOutTime: autoCheckOutTime,
+              actualMinutes: planDurationMinutes,
+              status: OtPlanEmployeeStatus.ABSENT,
+              note: (ticket.note || '') + ' [Hệ thống tự động check-out do quá 8 giờ]',
+            }
+          )
+          if(updateResult.affected === 0){
+            this.logger.debug(`[OT_AUTO_CHECKOUT] Ticket ${ticket.id} đã được checkout trước`);
+            await queryRunner.rollbackTransaction();
+            continue;
+          }
+          const segmentsEntities = segmentsData.map(s => 
+            queryRunner.manager.create(OtTimeSegment, {
+              otPlanEmployeeId: ticket.id,
+              ...s
+            })
+          );
+          await queryRunner.manager.save(OtTimeSegment, segmentsEntities);
+          await queryRunner.commitTransaction();
+          this.logger.log(`[OT_AUTO_CHECKOUT] Đã auto checkout ticket ID: ${ticket.id}`);
+        } catch (e) {
+          await queryRunner.rollbackTransaction();
+          this.logger.error(`Failed to auto-checkout ticket ${ticket.id}: ${e.message}`);
+        }
       }
+    } finally {
+      await queryRunner.release();
     }
   }
 }
+
