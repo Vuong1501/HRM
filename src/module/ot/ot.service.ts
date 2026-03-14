@@ -650,4 +650,35 @@ export class OtService {
 
         return { message: 'Từ chối kế hoạch OT thành công' };
     }
+
+    async getOtTicketDetail(user: User, otPlanEmployeeId: number){
+        const otPlanEmployee = await this.otPlanEmployeeRepo.findOne({
+            where: {id: otPlanEmployeeId, employeeId: user.id},
+            relations: ['otPlan'],
+            select: {
+                otPlan: {
+                    id: true,
+                    startTime: true,
+                    endTime: true,
+                    reason: true,
+                    status: true,
+                },
+                id: true,
+                status: true,
+                checkInTime: true,
+                checkOutTime: true,
+                workContent: true,
+                actualMinutes: true,
+                mode: true,
+                rejectedReason: true,
+            },
+        });
+
+        if(!otPlanEmployee) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        return {
+            message: 'Lấy chi tiết đơn OT thành công',
+            data: otPlanEmployee,
+        };
+    }
 }

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Patch,
   Body,
@@ -99,5 +100,14 @@ export class OtController {
         @Body() dto: RejectOtTicketDto,
     ) {
         return this.otService.rejectOtTicket(req.userEntity, Number(id), dto);
+    }
+
+    @Get('ticket/my-ot-ticket/:id')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
+    getOtTicketDetail(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+    ) {
+        return this.otService.getOtTicketDetail(req.userEntity, Number(id));
     }
 }

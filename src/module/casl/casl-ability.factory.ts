@@ -62,6 +62,7 @@ export class CaslAbilityFactory {
 
       can(Action.Read, OtPlan);
       
+      can(Action.Read, OtPlanEmployee);
       can(Action.CheckIn, OtPlanEmployee);
       can(Action.CheckOut, OtPlanEmployee);
       can(Action.Update, OtPlanEmployee);
