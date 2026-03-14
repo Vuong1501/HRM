@@ -412,7 +412,7 @@ export class OtService {
             }
         }
 
-        // các nhân viên phải cùng phòng với lead
+        // các nhân viên phải cùng phòng với PC
         const employees = await this.userRepo.find({
             where: dto.employeeIds.map(id => ({ id }))
         })
@@ -433,7 +433,7 @@ export class OtService {
         if (employees.length > 0) {
             const conflictOts = await this.otPlanEmployeeRepo
                 .createQueryBuilder('ope')
-                .leftJoin('ope.otPlan', 'op')
+                .innerJoin('ope.otPlan', 'op')
                 .where('ope.employeeId IN (:...employeeIds)', { employeeIds: employees.map(e => e.id) })
                 .andWhere('op.status IN (:...statuses)', { statuses: [OtPlanStatus.APPROVED, OtPlanStatus.PENDING] })
                 // phải không được trùng cả đơn đã tạo(pending, giống như tạo đơn nghỉ)
@@ -458,14 +458,22 @@ export class OtService {
             }
         }
 
-        // phòng IT tự động approve luôn khi tạo đơn
-        const isItDepartment = creator.departmentName === IT_DEPARTMENT;
-
-        // Tìm cấu hình Admin trước khi mở Transaction để tránh Lock Database vô ích
-        let admin: User | null = null;
-        if (!isItDepartment) {
-            admin = await this.userRepo.findOneBy({ role: UserRole.ADMIN });
-            if (!admin) {
+        const isPC = creator.role === UserRole.PROJECT_COORDINATOR;
+        // tìm ra người duyệt
+        let approver: User | null = null;
+        if (isPC) {
+            approver = await this.userRepo.findOne({ 
+                where: { 
+                    role: UserRole.DEPARTMENT_LEAD,
+                    departmentName: IT_DEPARTMENT,
+                } 
+            });
+            if (!approver) {
+                throw new BadRequestException(OT_ERRORS.LEADER_IT_NOT_FOUND);
+            }
+        } else {
+            approver = await this.userRepo.findOneBy({ role: UserRole.ADMIN });
+            if (!approver) {
                 throw new BadRequestException(OT_ERRORS.ADMIN_NOT_FOUND);
             }
         }
@@ -480,9 +488,9 @@ export class OtService {
                 startTime: startTime.toDate(),
                 endTime: endTime.toDate(),
                 reason: dto.reason,
-                status: isItDepartment ? OtPlanStatus.APPROVED : OtPlanStatus.PENDING,
-                approverId: isItDepartment ? creator.id : null,
-                approvedAt: isItDepartment ? dayjs().toDate() : null,
+                status: OtPlanStatus.PENDING,
+                approverId: null,
+                approvedAt: null,
             });
 
             const savedPlan = await queryRunner.manager.save(OtPlan, otPlan);
@@ -491,7 +499,7 @@ export class OtService {
                 queryRunner.manager.create(OtPlanEmployee, {
                     otPlanId: savedPlan.id,
                     employeeId: emp.id,
-                    status: isItDepartment ? OtPlanEmployeeStatus.PENDING : OtPlanEmployeeStatus.WAITING,
+                    status: OtPlanEmployeeStatus.WAITING,
                 }),
             );
 
@@ -500,35 +508,19 @@ export class OtService {
             await queryRunner.commitTransaction();
 
             // Gửi mail cho các nhân viên trong background
-            if(isItDepartment) {
-                Promise.all(
-                    employees.map((emp) => 
-                        this.mailService.sendMailWithRetry(
-                            () => this.mailService.sendOtPlanApproved(
-                                emp.email,
-                                emp.name,
-                                startTime.toDate(),
-                                endTime.toDate(),
-                                dto.reason,
-                            ),
-                            'SEND_OT_NOTIFICATION_FAILED',
-                        ).catch(e => console.error(`Lỗi gửi mail OT cho ${emp.email}`, e))
-                    )
-                );
-            }
-            if (!isItDepartment && admin) {
-                this.mailService.sendMailWithRetry(
-                    () => this.mailService.sendOtPlanSubmitted(
-                        admin.email,
-                        creator.name,
-                        creator.departmentName,
-                        startTime.toDate(),
-                        endTime.toDate(),
-                        dto.reason,
-                    ),
-                    'SEND_OT_NOTIFICATION_FAILED',
-                ).catch(e => console.error(`Lỗi gửi mail OT cho admin ${admin.email}`, e));
-            }
+
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtPlanSubmitted(
+                    approver.email,
+                    creator.name,
+                    creator.departmentName,
+                    startTime.toDate(),
+                    endTime.toDate(),
+                    dto.reason,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => console.error(`Lỗi gửi mail OT cho người duyệt ${approver.email}`, e));
+            
 
             return {
                 message: 'Tạo kế hoạch OT thành công',

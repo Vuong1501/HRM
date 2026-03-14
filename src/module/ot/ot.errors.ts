@@ -7,6 +7,10 @@ export const OT_ERRORS = {
     code: 'EMPLOYEE_NOT_FOUND',
     message: 'Không tìm thấy nhân viên',
   },
+  LEADER_IT_NOT_FOUND: {
+    code: 'LEADER_IT_NOT_FOUND',
+    message: 'Không tìm thấy trưởng phòng IT',
+  },
   OT_PLAN_NOT_FOUND: {
     code: 'OT_PLAN_NOT_FOUND',
     message: 'Không tìm thấy kế hoạch OT',
