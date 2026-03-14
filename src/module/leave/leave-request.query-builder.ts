@@ -6,6 +6,7 @@ import { User } from '../users/entities/user.entity';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
+import { EMPLOYEE_LIKE_ROLES } from 'src/common/constants/role-groups.constant';
 
 @Injectable()
 export class LeaveRequestQueryBuilder {
@@ -25,7 +26,7 @@ export class LeaveRequestQueryBuilder {
         user: User
     ): SelectQueryBuilder<LeaveRequest> {
 
-        if (user.role === UserRole.EMPLOYEE) {
+        if (EMPLOYEE_LIKE_ROLES.includes(user.role)) {
             qb.andWhere('user.id = :id', { id: user.id });
         }
 

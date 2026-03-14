@@ -29,6 +29,7 @@ import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { StorageService } from 'src/common/storage/storage.service';
 import { LEAVE_ERRORS } from './leave.errors';
 import { LEAVE_CONSTANTS } from 'src/common/constants/leave.constants';
+import { EMPLOYEE_LIKE_ROLES } from 'src/common/constants/role-groups.constant';
 import dayjs from 'dayjs';
 
 @Injectable()
@@ -537,7 +538,7 @@ export class LeaveService {
     if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
     if (
-      user.role === UserRole.EMPLOYEE &&
+      EMPLOYEE_LIKE_ROLES.includes(user.role) &&
       leave.userId !== user.id
     ) {
       throw new ForbiddenException(LEAVE_ERRORS.ONLY_UPDATE_OWN);
@@ -689,7 +690,7 @@ export class LeaveService {
     if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
     if (
-      user.role === UserRole.EMPLOYEE &&
+      EMPLOYEE_LIKE_ROLES.includes(user.role) &&
       leave.userId !== user.id
     ) {
       throw new ForbiddenException(LEAVE_ERRORS.ONLY_VIEW_OWN);
@@ -730,7 +731,7 @@ export class LeaveService {
   }
 
   if (
-    user.role === UserRole.EMPLOYEE &&
+    EMPLOYEE_LIKE_ROLES.includes(user.role) &&
     attachment.leaveRequest.userId !== user.id
   ) {
     throw new ForbiddenException(LEAVE_ERRORS.VIEW_ATTACHMENT_FORBIDDEN);
