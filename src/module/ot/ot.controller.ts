@@ -7,6 +7,7 @@ import {
   Param,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OtService } from './ot.service';
@@ -20,12 +21,22 @@ import { PoliciesGuard } from 'src/common/guards/policies.guard';
 import { SubmitOtTicketDto } from './dto/submit-ot-ticket.dto';
 import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
+import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 
 @ApiTags('ot')
 @Controller('ot')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
 export class OtController {
     constructor(private readonly otService: OtService){}
+
+    @Get('plan/get-list')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlan))
+    getListOtPlans(
+        @Req() req: RequestWithUser,
+        @Query() query: OtPlanListQueryDto,
+    ) {
+        return this.otService.getListOtPlans(req.userEntity, query);
+    }
 
     @Post('plan')
     @CheckPolicies((ability) => ability.can(Action.Create, OtPlan))

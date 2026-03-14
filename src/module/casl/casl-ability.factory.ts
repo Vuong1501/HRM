@@ -32,8 +32,8 @@ export class CaslAbilityFactory {
       can(Action.Read, LeaveRequest);
       can(Action.Create, LeaveRequest);
 
-      can(Action.Read, OtPlan);
-      can(Action.Cancel, OtPlan)
+      // can(Action.Read, OtPlan);
+      // can(Action.Cancel, OtPlan)
 
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User);

@@ -14,10 +14,11 @@ import { OtTimeSegmentHelper } from './helpers/ot-time-segment.helper';
 import { OtCompensatoryHelper } from './helpers/ot-compensatory.helper';
 import { OtTicketSweeperService } from './ot-ticket-sweeper.service';
 import { LeaveBalance } from '../leave/entities/leave-balance.entity';
+import { OtPlanQueryBuilder } from './ot-plan.query-builder';
 
 @Module({
   imports: [TypeOrmModule.forFeature([OtPlan, OtPlanEmployee, OtTimeSegment, User, LeaveRequest, LeaveBalance]), CaslModule, MailModule, CalendarModule],
   controllers: [OtController],
-  providers: [OtService, OtTimeSegmentHelper, OtCompensatoryHelper, OtTicketSweeperService]
+  providers: [OtService, OtTimeSegmentHelper, OtCompensatoryHelper, OtTicketSweeperService, OtPlanQueryBuilder]
 })
 export class OtModule { }

@@ -21,7 +21,8 @@ import { OtMode } from 'src/common/enums/ot/ot-mode.enum';
 import { LeaveBalance } from '../leave/entities/leave-balance.entity';
 import dayjs from 'dayjs';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
-
+import { OtPlanQueryBuilder } from './ot-plan.query-builder';
+import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 
 const IT_DEPARTMENT = 'IT';
 const OT_WEEKDAY_START_HOUR = 17;
@@ -53,7 +54,57 @@ export class OtService {
         private calendarService: CalendarService,
         private readonly otTimeSegmentHelper: OtTimeSegmentHelper,
         private readonly otCompensatoryHelper: OtCompensatoryHelper,
+        private readonly otPlanQueryBuilder: OtPlanQueryBuilder,
     ) {}
+
+    async getListOtPlans(user: User, query: OtPlanListQueryDto) {
+        const { page = 1, limit = 10 } = query;
+
+        let qb = this.otPlanQueryBuilder.buildBaseQuery();
+
+        qb = this.otPlanQueryBuilder.applyAuthorization(qb, user);
+        qb = this.otPlanQueryBuilder.applyFilters(qb, query, user);
+
+        // query đếm tổng trước
+        const total = await qb.getCount();
+
+        //query lấy dữ liệu
+        const dataQb = qb.clone()
+
+        dataQb.select([
+            'op.id AS id',
+            'op.startTime AS startTime',
+            'op.endTime AS endTime',
+            'op.status AS status',
+            'op.createdAt AS createdAt',
+            'creator.name AS creatorName',
+            'creator.departmentName AS creatorDepartment',
+        ])
+        .orderBy('op.createdAt', 'DESC')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+        const rawData = await dataQb.getRawMany();
+
+        const data = rawData.map((item) => {
+            return {
+                id: item.id,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                status: item.status,
+                createdAt: item.createdAt,
+                creatorName: item.creatorName,
+                creatorDepartment: item.creatorDepartment,
+            };
+        });
+
+        return {
+            data,
+            total,
+            page,
+            lastPage: Math.ceil(total / limit),
+        };
+    }
 
     async checkIn(user: User, otPlanEmployeeId: number) {
         const ticket = await this.otPlanEmployeeRepo.findOne({
