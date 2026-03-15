@@ -144,73 +144,117 @@ export class HrService {
     });
     const existingEmails = new Set(existingUsers.map((u) => u.email));
 
-    // Mảng gom các thông tin mail cần gửi ngầm sau khi chốt DB
-    const mailQueue: { email: string; link: string; outboxId: number }[] = [];
+    const usersToInsert: Array<Partial<User> & { _inviteLink: string; _dto: typeof dto.users[number] }> = [];
+    for(const userDto of dto.users){
+      if (existingEmails.has(userDto.email)) {
+        result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
+        continue;
+      }
+      existingEmails.add(userDto.email);
 
+      const token = randomUUID();
+      const frontendUrl = this.configService.getOrThrow<string>('BACKEND_URL');
+      const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
+
+      usersToInsert.push({
+        email: userDto.email,
+        name: userDto.name,
+        role: userDto.role,
+        status: UserStatus.INVITED,
+        inviteToken: token,
+        dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
+        departmentName: userDto.departmentName,
+        address: userDto.address,
+        sex: userDto.sex,
+        phoneNumber: userDto.phoneNumber,
+        startDate: dayjs(userDto.startDate).toDate(),
+        _inviteLink: inviteLink,
+        _dto: userDto,
+      });
+    }
+
+    if (usersToInsert.length === 0) return result;
+
+    //bắt đầu transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    // Mảng gom các thông tin mail cần gửi ngầm sau khi chốt DB
+    const mailQueue: { email: string; link: string; outboxId: number }[] = [];
+
     try {
-      for (const userDto of dto.users) {
-        if (existingEmails.has(userDto.email)) {
-          result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
-          continue;
-        }
+      await queryRunner.query('SAVEPOINT bulk_invite');
 
-        await queryRunner.query('SAVEPOINT user_savepoint');
+      try {
+        // 1query insert các users
+        const insertedUsers = await queryRunner.manager.save(
+          User,
+          usersToInsert.map(({ _inviteLink, _dto, ...userData }) => userData)
+        ); 
 
-        try {
-          const token = randomUUID();
-          const entity = queryRunner.manager.create(User, {
-            email: userDto.email,
-            name: userDto.name,
-            role: userDto.role,
-            status: UserStatus.INVITED,
-            inviteToken: token,
-            dateOfBirth: dayjs(userDto.dateOfBirth).toDate(),
-            departmentName: userDto.departmentName,
-            address: userDto.address,
-            sex: userDto.sex,
-            phoneNumber: userDto.phoneNumber,
-            startDate: dayjs(userDto.startDate).toDate(),
-          });
-
-          const user = await queryRunner.manager.save(entity);
-
-          const frontendUrl = this.configService.getOrThrow<string>('BACKEND_URL');
-          const inviteLink = `${frontendUrl}/invite/accept?token=${token}`;
-
-          // Lưu Trạng thái hàng đợi Email (Đồng thời trong 1 Savepoint)
-          const outbox = queryRunner.manager.create(OutboxMail, {
-            recipient: userDto.email,
+        // 1query  insert các outbox mail
+        const outboxEntities = insertedUsers.map((user, i) =>
+          queryRunner.manager.create(OutboxMail, {
+            recipient: user.email,
             template: 'invite',
-            contextJson: JSON.stringify({ link: inviteLink }),
+            contextJson: JSON.stringify({ link: usersToInsert[i]._inviteLink }),
             status: OutboxStatus.PENDING,
+          })
+        );
+        const savedOutboxes = await queryRunner.manager.save(OutboxMail, outboxEntities);
+
+        // lưu vào 1 mảng để tí nữa gửi mail nền
+        insertedUsers.forEach((user, i) => {
+          mailQueue.push({
+            email: user.email,
+            link: usersToInsert[i]._inviteLink,
+            outboxId: savedOutboxes[i].id,
           });
-          const savedOutbox = await queryRunner.manager.save(outbox);
+          result.success.push(usersToInsert[i]._dto);
+        });
+      } catch (error) {
+        // nếu ở trên bulk lỗi thì nó mới savepoint từng chỗ
+        await queryRunner.query('ROLLBACK TO SAVEPOINT bulk_invite');
+        for(const userData of usersToInsert){
+          await queryRunner.query('SAVEPOINT single_user');
+          try {
+            const user = await queryRunner.manager.save(User, {
+              ...userData,
+              _inviteLink: undefined,
+              _dto: undefined,
+            });
 
-          await queryRunner.query('RELEASE SAVEPOINT user_savepoint');
+            const outbox = queryRunner.manager.create(OutboxMail, {
+              recipient: user.email,
+              template: 'invite',
+              contextJson: JSON.stringify({ link: userData._inviteLink }),
+              status: OutboxStatus.PENDING,
+            });
+            const savedOutbox = await queryRunner.manager.save(outbox);
 
-          // Cập nhật existingEmails để các bản ghi sau trong file trùng cũng bị chặn đứng
-          existingEmails.add(user.email);
+            await queryRunner.query('RELEASE SAVEPOINT single_user');
 
-          // Cất mail vào hàng đợi chuẩn bị nổ cho Task Background
-          mailQueue.push({ email: user.email, link: inviteLink, outboxId: savedOutbox.id });
-          result.success.push(userDto);
-
-        } catch (error) {
-          await queryRunner.query('ROLLBACK TO SAVEPOINT user_savepoint');
+            mailQueue.push({ email: user.email, link: userData._inviteLink, outboxId: savedOutbox.id });
+            result.success.push(userData._dto);
+          } catch (error) {
+            await queryRunner.query('ROLLBACK TO SAVEPOINT single_user');
           result.failed.push({
-            user: userDto,
+            user: userData._dto,
             reason: error instanceof Error ? error.message : 'Lỗi không xác định',
           });
+          }
         }
       }
-
       await queryRunner.commitTransaction();
-
-      Promise.all(
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+    
+    Promise.all(
         mailQueue.map(({ email, link, outboxId }) =>
           this.mailService.sendMailWithRetry(
             () => this.mailService.sendInvite(email, link),
@@ -220,14 +264,7 @@ export class HrService {
         )
       );
 
-      return result;
-
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+    return result;
   }
 
   async previewBulkInvite(users: InviteDto[], rowErrors: any[]) {
@@ -320,3 +357,4 @@ export class HrService {
     return this.previewBulkInvite(users, errors);
   }
 }
+
