@@ -1,23 +1,27 @@
 import { UserRole } from '../enums/user-role.enum';
 import { EmploymentType } from '../enums/user-employeeType.enum';
 import { RawInviteRow } from 'src/module/hr/dto/raw-invite-row';
+import dayjs from 'dayjs';
+
+const EXCEL_EPOCH_OFFSET = 25569; // số ngày từ 1/1/1900 (Excel epoch) đến 1/1/1970 (Unix epoch)
+const MS_PER_DAY = 86400 * 1000;  // số milliseconds trong 1 ngày
 
 export function normalizeDate(value: any): string | undefined {
   if (!value) return undefined;
 
   if (value instanceof Date) {
-    return value.toISOString().split('T')[0];
+    return dayjs(value).format('YYYY-MM-DD');
   }
 
   if (typeof value === 'number') {
-    return new Date((value - 25569) * 86400 * 1000).toISOString().split('T')[0];
+    return dayjs((value - EXCEL_EPOCH_OFFSET) * MS_PER_DAY).format('YYYY-MM-DD');
   }
 
   if (typeof value === 'string') {
     const parts = value.split('/');
     if (parts.length === 3) {
       const [day, month, year] = parts;
-      return new Date(`${year}-${month}-${day}`).toISOString().split('T')[0];
+      return dayjs(`${year}-${month}-${day}`).format('YYYY-MM-DD');
     }
   }
 

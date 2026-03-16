@@ -49,7 +49,7 @@ export class PoliciesGuard implements CanActivate {
     req.userEntity = user;
 
     const ability = this.caslAbilityFactory.createForUser(user);
-    // console.log("ability", ability);
+
     // (ability) => ability.can(Action.Read, User)
 
     const allowed = policyHandlers.every((handler) =>

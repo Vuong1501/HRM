@@ -36,81 +36,81 @@ export class LeaveAccrualService {
    * TH2 - Nhân viên chính thức (OFFICIAL):
    *   - Phép tích lũy 1/tháng và được dùng ngay.
    */
-  @Cron('5 0 1 * *') // 00:05 ngày 1 hàng tháng
-  async accrueMonthlyLeave() {
-    const now = dayjs();
-    const currentYear = now.year();
+  // @Cron('5 0 1 * *') // 00:05 ngày 1 hàng tháng
+  // async accrueMonthlyLeave() {
+  //   const now = dayjs();
+  //   const currentYear = now.year();
 
-    this.logger.log(
-      `Bắt đầu cộng phép tháng ${now.month() + 1}/${currentYear}`,
-    );
+  //   this.logger.log(
+  //     `Bắt đầu cộng phép tháng ${now.month() + 1}/${currentYear}`,
+  //   );
 
-    // Lấy tất cả nhân viên đang hoạt động (PROBATION + OFFICIAL)
-    // có startDate và đã bắt đầu làm rồi (startDate <= hôm nay)
-    const activeUsers = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.status = :status', { status: UserStatus.ACTIVE })
-      .andWhere('u.employmentType IN (:...types)', {
-        types: [EmploymentType.PROBATION, EmploymentType.OFFICIAL],
-      })
-      .andWhere('u.startDate IS NOT NULL')
-      .andWhere('u.startDate <= :now', { now: now.toDate() })
-      .getMany();
+  //   // Lấy tất cả nhân viên đang hoạt động (PROBATION + OFFICIAL)
+  //   // có startDate và đã bắt đầu làm rồi (startDate <= hôm nay)
+  //   const activeUsers = await this.userRepo
+  //     .createQueryBuilder('u')
+  //     .where('u.status = :status', { status: UserStatus.ACTIVE })
+  //     .andWhere('u.employmentType IN (:...types)', {
+  //       types: [EmploymentType.PROBATION, EmploymentType.OFFICIAL],
+  //     })
+  //     .andWhere('u.startDate IS NOT NULL')
+  //     .andWhere('u.startDate <= :now', { now: now.toDate() })
+  //     .getMany();
 
-    this.logger.log(
-      `Tìm thấy ${activeUsers.length} nhân viên cần cộng phép`,
-    );
+  //   this.logger.log(
+  //     `Tìm thấy ${activeUsers.length} nhân viên cần cộng phép`,
+  //   );
 
-    let successCount = 0;
-    let skipCount = 0;
+  //   let successCount = 0;
+  //   let skipCount = 0;
 
-    for (const user of activeUsers) {
-      try {
-        // Lấy hoặc tạo leave balance năm hiện tại
-        let balance = await this.leaveBalanceRepo.findOne({
-          where: { userId: user.id, year: currentYear },
-        });
+  //   for (const user of activeUsers) {
+  //     try {
+  //       // Lấy hoặc tạo leave balance năm hiện tại
+  //       let balance = await this.leaveBalanceRepo.findOne({
+  //         where: { userId: user.id, year: currentYear },
+  //       });
 
-        if (!balance) {
-          balance = this.leaveBalanceRepo.create({
-            userId: user.id,
-            year: currentYear,
-            annualLeaveTotal: 0,
-            annualLeaveUsed: 0,
-            unpaidLeaveUsed: 0,
-            compensatoryBalance: 0,
-          });
-        }
+  //       if (!balance) {
+  //         balance = this.leaveBalanceRepo.create({
+  //           userId: user.id,
+  //           year: currentYear,
+  //           annualLeaveTotal: 0,
+  //           annualLeaveUsed: 0,
+  //           unpaidLeaveUsed: 0,
+  //           compensatoryBalance: 0,
+  //         });
+  //       }
 
-        // Kiểm tra tối đa 12 phép/năm
-        if (Number(balance.annualLeaveTotal) >= LEAVE_CONSTANTS.MAX_ANNUAL_LEAVE_PER_YEAR) {
-          this.logger.debug(
-            `User ${user.id} (${user.name}) đã đủ 12 phép, bỏ qua`,
-          );
-          skipCount++;
-          continue;
-        }
+  //       // Kiểm tra tối đa 12 phép/năm
+  //       if (Number(balance.annualLeaveTotal) >= LEAVE_CONSTANTS.MAX_ANNUAL_LEAVE_PER_YEAR) {
+  //         this.logger.debug(
+  //           `User ${user.id} (${user.name}) đã đủ 12 phép, bỏ qua`,
+  //         );
+  //         skipCount++;
+  //         continue;
+  //       }
 
-        // Cộng thêm 1 phép
-        balance.annualLeaveTotal = Number(balance.annualLeaveTotal) + 1;
-        await this.leaveBalanceRepo.save(balance);
+  //       // Cộng thêm 1 phép
+  //       balance.annualLeaveTotal = Number(balance.annualLeaveTotal) + 1;
+  //       await this.leaveBalanceRepo.save(balance);
 
-        this.logger.debug(
-          `[LeaveAccrual] User #${user.id} (${user.name}) [${user.employmentType}] ` +
-            `→ annualLeaveTotal: ${balance.annualLeaveTotal}`,
-        );
-        successCount++;
-      } catch (err) {
-        this.logger.error(
-          `[LeaveAccrual] Lỗi khi cộng phép cho user #${user.id}: ${err}`,
-        );
-      }
-    }
+  //       this.logger.debug(
+  //         `[LeaveAccrual] User #${user.id} (${user.name}) [${user.employmentType}] ` +
+  //           `→ annualLeaveTotal: ${balance.annualLeaveTotal}`,
+  //       );
+  //       successCount++;
+  //     } catch (err) {
+  //       this.logger.error(
+  //         `[LeaveAccrual] Lỗi khi cộng phép cho user #${user.id}: ${err}`,
+  //       );
+  //     }
+  //   }
 
-    this.logger.log(
-      ` Hoàn tất: ${successCount} người được cộng phép, ${skipCount} người đã đủ tối đa`,
-    );
-  }
+  //   this.logger.log(
+  //     ` Hoàn tất: ${successCount} người được cộng phép, ${skipCount} người đã đủ tối đa`,
+  //   );
+  // }
 
   async backfillLeaveForUser(
     user: User,

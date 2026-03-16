@@ -5,6 +5,7 @@ import { LessThan, In, Repository } from 'typeorm';
 import { OutboxMail } from './entities/outbox-mail.entity';
 import { OutboxStatus } from '../../common/enums/outbox-status.enum';
 import { MailService } from './mail.service';
+import dayjs from 'dayjs';
 
 const CRON_MAX_RETRIES = 3;
 const CRON_INTERVAL = '*/15 * * * *';
@@ -24,7 +25,7 @@ export class MailSweeperService {
   async handleCron() {
     this.logger.debug('[OUTBOX_SWEEP_START]');
 
-    const pendingCutoff = new Date(Date.now() - PENDING_TIMEOUT_MS);
+    const pendingCutoff = dayjs().subtract(PENDING_TIMEOUT_MS, 'ms').toDate();
 
     const stuckMails = await this.outboxRepo
       .createQueryBuilder('outbox')

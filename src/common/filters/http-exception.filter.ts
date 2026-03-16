@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import dayjs from 'dayjs';
+
 interface HttpExceptionResponse {
   message?: string | string[];
   code?: string;
@@ -55,7 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code,
       message,
       detail,
-      timestamp: new Date().toISOString(),
+      timestamp: dayjs().toISOString(),
       path: request.url,
     });
   }
