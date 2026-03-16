@@ -1,8 +1,9 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { LeaveType } from 'src/common/enums/leave-type.enum';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('leave_configs')
-export class LeaveConfig {
+export class LeaveConfig extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,9 +25,4 @@ export class LeaveConfig {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

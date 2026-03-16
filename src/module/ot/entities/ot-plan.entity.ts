@@ -12,10 +12,11 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { OtPlanStatus } from 'src/common/enums/ot/ot-status.enum';
 import { OtPlanEmployee } from './ot-plan-employee.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('ot_plans')
 @Index(['status', 'createdAt']) 
-export class OtPlan {
+export class OtPlan extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -47,12 +48,6 @@ export class OtPlan {
 
   @Column({type: 'datetime', nullable: true })
   approvedAt: Date | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 
   // Relations
   @ManyToOne(() => User)

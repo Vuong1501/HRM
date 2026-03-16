@@ -14,10 +14,11 @@ import { OtMode } from 'src/common/enums/ot/ot-mode.enum';
 import { OtPlan } from './ot-plan.entity';
 import { OtTimeSegment } from './ot-time-segment.entity';
 import { User } from '../../users/entities/user.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('ot_plan_employees')
 @Index(['employeeId', 'status'])
-export class OtPlanEmployee {
+export class OtPlanEmployee extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -61,9 +62,6 @@ export class OtPlanEmployee {
 
   @Column({ type: 'varchar', nullable: true })
   rejectedReason: string | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
 
   // Relations
   @ManyToOne(() => OtPlan, (plan) => plan.employees)

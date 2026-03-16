@@ -13,9 +13,10 @@ import { LeaveType } from 'src/common/enums/leave-type.enum';
 import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { HalfDayType } from 'src/common/enums/halfDayType.enum';
 import { LeaveAttachment } from './leave_attachments.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('leave_requests')
-export class LeaveRequest {
+export class LeaveRequest extends BaseEntity {
 
   @PrimaryGeneratedColumn()
   id: number;
@@ -108,9 +109,4 @@ export class LeaveRequest {
   @Column({ type: 'timestamp', nullable: true })
   approvedAt: Date | null;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }
