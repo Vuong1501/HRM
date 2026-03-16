@@ -95,7 +95,7 @@ export class MailService {
           endDate: dayjs(endDate).format('DD MMM YYYY'),
         },
       });
-    }
+  }
 
   // gửi thông báo cho hr là có đơn xin nghỉ đã được duyệt
   async sendLeaveApprovedNotification(

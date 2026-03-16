@@ -54,6 +54,9 @@ export class HrService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let savedOutboxId: number;
+    let savedUserEmail: string;
+
     try {
       const entity = queryRunner.manager.create(User, {
         email: userDto.email,
@@ -78,18 +81,10 @@ export class HrService {
       });
       const savedOutbox = await queryRunner.manager.save(outbox);
 
+      savedOutboxId = savedOutbox.id;
+      savedUserEmail = user.email;
+
       await queryRunner.commitTransaction();
-
-      // Gửi mail trong background
-      this.mailService.sendMailWithRetry(
-        () => this.mailService.sendInvite(user.email, link),
-        'SEND_INVITE_FAILED',
-        savedOutbox.id,
-      ).catch((e) => this.logger.error('Gửi mail thất bại:', e));
-
-      return {
-        success: true,
-      };
 
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -97,6 +92,17 @@ export class HrService {
     } finally {
       await queryRunner.release();
     }
+
+    // Gửi mail trong background
+    this.mailService.sendMailWithRetry(
+      () => this.mailService.sendInvite(savedUserEmail, link),
+      'SEND_INVITE_FAILED',
+      savedOutboxId,
+    ).catch((e) => this.logger.error('Gửi mail thất bại:', e));
+
+    return {
+      success: true,
+    };
   }
 
   // api resend lại mail khi lỗi sau tất cả

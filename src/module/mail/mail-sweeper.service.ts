@@ -48,20 +48,22 @@ export class MailSweeperService {
 
     for (const mail of stuckMails) {
       mail.retryCount += 1;
+      // update số lần retry luôn nhỡ đâu nó bị lỗi giữa chừng
+      await this.outboxRepo.update(mail.id, { retryCount: mail.retryCount });
       
+      if (mail.template !== 'invite') {
+        this.logger.warn(`[OUTBOX_UNKNOWN_TEMPLATE] id=${mail.id}, template=${mail.template}`);
+        continue;
+      }
+
       try {
         const context = JSON.parse(mail.contextJson);
-
-        if (mail.template === 'invite') {
-          await this.mailService.sendMailWithRetry(
-            () => this.mailService.sendInvite(mail.recipient, context.link),
-            'SEND_INVITE_FAILED',
-            mail.id,
-            true 
-          );
-        }
-
-        await this.outboxRepo.update(mail.id, { retryCount: mail.retryCount });
+        await this.mailService.sendMailWithRetry(
+          () => this.mailService.sendInvite(mail.recipient, context.link),
+          'SEND_INVITE_FAILED',
+          mail.id,
+          true 
+        );
         this.logger.log(`[OUTBOX_RETRY_SUCCESS] id=${mail.id}, recipient=${mail.recipient}`);
       } catch (error) {
         const newStatus = mail.retryCount >= CRON_MAX_RETRIES ? OutboxStatus.FATAL_FAILED : OutboxStatus.FAILED;
