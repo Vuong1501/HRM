@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #c62828; padding: 24px; text-align: center; }
+    .header h1 { color: #fff; margin: 0; font-size: 20px; }
+    .body { padding: 32px; color: #333; }
+    .info-box { background: #ffebee; border-left: 4px solid #c62828; padding: 16px; border-radius: 4px; margin: 20px 0; }
+    .info-row { margin: 8px 0; font-size: 15px; }
+    .label { font-weight: bold; color: #555; }
+    .badge { display: inline-block; background: #c62828; color: #fff; padding: 4px 12px; border-radius: 12px; font-size: 13px; }
+    .reason-box { background: #fff8e1; border-left: 4px solid #f9a825; padding: 12px 16px; border-radius: 4px; margin: 16px 0; font-size: 15px; }
+    .footer { background: #f4f4f4; text-align: center; padding: 16px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>❌ Báo cáo OT bị từ chối</h1>
+    </div>
+    <div class="body">
+      <p>Xin chào <strong>{{employeeName}}</strong>,</p>
+      <p>Báo cáo OT của bạn đã bị <span class="badge">TỪ CHỐI</span></p>
+      <div class="info-box">
+        <div class="info-row"><span class="label">👤 Nhân viên:</span> {{employeeName}}</div>
+        <div class="info-row"><span class="label">🕐 Giờ check-in:</span> {{checkInTime}}</div>
+        <div class="info-row"><span class="label">🕐 Giờ check-out:</span> {{checkOutTime}}</div>
+        <div class="info-row"><span class="label">⏱ Tổng thời gian:</span> {{actualMinutes}} phút</div>
+        <div class="info-row"><span class="label">📝 Nội dung công việc:</span> {{workContent}}</div>
+      </div>
+      <p><strong>Lý do từ chối:</strong></p>
+      <div class="reason-box">{{rejectedReason}}</div>
+      <p>Nếu có thắc mắc, vui lòng liên hệ trực tiếp với lead của bạn.</p>
+      <p>Trân trọng,<br/><strong>Hệ thống quản lý nhân sự</strong></p>
+    </div>
+    <div class="footer">Email này được gửi tự động, vui lòng không trả lời.</div>
+  </div>
+</body>
+</html>

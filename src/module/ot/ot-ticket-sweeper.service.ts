@@ -84,7 +84,7 @@ export class OtTicketSweeperService {
     const queryRunner = this.dataSource.createQueryRunner();
     try {
 
-      await queryRunner.connect();
+      await queryRunner.connect(); 
 
       for (const ticket of tickNeedCheckout) {
         this.logger.log(`Auto-checking-out ticket ID: ${ticket.id}`);

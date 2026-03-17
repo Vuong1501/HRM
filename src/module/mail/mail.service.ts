@@ -177,4 +177,79 @@ export class MailService {
       },
     });
   }
+
+  // lead nhận mail khi nhân viên nộp báo cáo OT
+  async sendOtTicketSubmitted(
+    to: string,
+    employeeName: string,
+    departmentName: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+    actualMinutes: number,
+    workContent: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo: Có báo cáo OT mới cần duyệt',
+      template: 'ot-ticket-submitted',
+      context: {
+        employeeName,
+        departmentName,
+        checkInTime: dayjs(checkInTime).format('HH:mm DD/MM/YYYY'),
+        checkOutTime: dayjs(checkOutTime).format('HH:mm DD/MM/YYYY'),
+        actualMinutes,
+        workContent,
+      },
+    });
+  }
+
+  // nhân viên và hr nhận mail khi lead duyệt ot ticket
+  async sendOtTicketApproved(
+    to: string,
+    employeeName: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+    actualMinutes: number,
+    workContent: string,
+    mode: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo: Báo cáo OT đã được duyệt',
+      template: 'ot-ticket-approved',
+      context: {
+        employeeName,
+        checkInTime: dayjs(checkInTime).format('HH:mm DD/MM/YYYY'),
+        checkOutTime: dayjs(checkOutTime).format('HH:mm DD/MM/YYYY'),
+        actualMinutes,
+        workContent,
+        mode,
+      },
+    });
+  }
+
+  //nhân viên nhận mail khi lead từ chối ot ticket
+  async sendOtTicketRejected(
+    to: string,
+    employeeName: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+    actualMinutes: number,
+    workContent: string,
+    rejectedReason: string,
+  ): Promise<void> {
+    await this.mailerService.sendMail({
+      to,
+      subject: 'Thông báo: Báo cáo OT bị từ chối',
+      template: 'ot-ticket-rejected',
+      context: {
+        employeeName,
+        checkInTime: dayjs(checkInTime).format('HH:mm DD/MM/YYYY'),
+        checkOutTime: dayjs(checkOutTime).format('HH:mm DD/MM/YYYY'),
+        actualMinutes,
+        workContent,
+        rejectedReason,
+      },
+    });
+  }
 }
