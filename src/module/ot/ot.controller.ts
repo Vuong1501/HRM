@@ -23,6 +23,7 @@ import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
+import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 
 @ApiTags('ot')
 @Controller('ot')
@@ -114,6 +115,16 @@ export class OtController {
         return this.otService.approveOtTicket(req.userEntity, Number(id));
     }
 
+    @Patch('ticket/:id/update')
+    @CheckPolicies((ability) => ability.can(Action.Update, OtPlanEmployee))
+    updateTicketTimeByLead(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+        @Body() dto: UpdateOtTicketTimeDto,
+    ) {
+        return this.otService.updateTicketTimeByLead(req.userEntity, Number(id), dto);
+    }
+
     @Patch('ticket/:id/reject')
     @CheckPolicies((ability) => ability.can(Action.Reject, OtPlanEmployee))
     rejectOtTicket(
@@ -123,6 +134,7 @@ export class OtController {
     ) {
         return this.otService.rejectOtTicket(req.userEntity, Number(id), dto);
     }
+
 
     @Get('ticket/my-ot-ticket/:id')
     @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))

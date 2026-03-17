@@ -63,6 +63,10 @@ export const OT_ERRORS = {
     code: 'SEND_OT_NOTIFICATION_FAILED',
     message: 'Gửi mail thông báo OT cho nhân viên thất bại',
   },
+  INVALID_OT_TIME: {
+    code: 'INVALID_OT_TIME',
+    message: 'Thời gian OT cập nhật không hợp lệ (Thời gian kết thúc phải lớn hơn bắt đầu)',
+  },
   SEND_OT_PLAN_SUBMITTED_FAILED: {
     code: 'SEND_OT_PLAN_SUBMITTED_FAILED',
     message: 'Gửi mail thông báo OT cho admin thất bại',
@@ -170,5 +174,9 @@ export const OT_ERRORS = {
   CANNOT_UPDATE_EMPLOYEES: {
     code: 'CANNOT_UPDATE_EMPLOYEES',
     message: 'Không thể cập nhật danh sách nhân viên trong kế hoạch OT',
+  },
+  TICKET_ALREADY_PROCESSED: {
+    code: 'TICKET_ALREADY_PROCESSED',
+    message: 'Ticket đã được xử lý trước đó',
   },
 } as const;

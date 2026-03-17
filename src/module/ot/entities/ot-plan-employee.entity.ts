@@ -41,6 +41,12 @@ export class OtPlanEmployee {
   @Column({ nullable: true })
   checkOutTime: Date;
 
+  @Column({ nullable: true })
+  checkInAfterUpdate: Date;
+
+  @Column({ nullable: true })
+  checkOutAfterUpdate: Date;
+
   @Column({ type: 'int', nullable: true })
   actualMinutes: number;
 
@@ -58,6 +64,9 @@ export class OtPlanEmployee {
 
   @Column({ type: 'text', nullable: true })
   note: string;
+
+  @Column({ type: 'text', nullable: true })
+  updateReason: string;
 
   @Column({ type: 'varchar', nullable: true })
   rejectedReason: string | null;

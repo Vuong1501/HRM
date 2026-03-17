@@ -24,6 +24,7 @@ import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanQueryBuilder } from './ot-plan.query-builder';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
+import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 
 const IT_DEPARTMENT = 'IT';
 const OT_WEEKDAY_START_HOUR = 17;
@@ -921,5 +922,149 @@ export class OtService {
             message: 'Lấy chi tiết đơn OT thành công',
             data: otPlanEmployee,
         };
+    }
+
+    async updateTicketTimeByLead(user: User, ticketId: number, dto: UpdateOtTicketTimeDto) {
+
+        const ticket = await this.otPlanEmployeeRepo.findOne({
+            where: { id: ticketId },
+            relations: ['otPlan', 'employee'],
+        });
+
+        if (!ticket) {
+            throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
+        }
+
+        if(user.role !== UserRole.DEPARTMENT_LEAD){
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
+        }
+
+        if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
+            throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
+        }
+
+        const updatedCheckIn = dayjs(dto.updatedCheckInTime);
+        const updatedCheckOut = dayjs(dto.updatedCheckOutTime);
+
+        if (updatedCheckIn.isAfter(updatedCheckOut)) {
+            throw new BadRequestException(OT_ERRORS.INVALID_OT_TIME);
+        }
+
+        const minUpdateCheckoutTime = updatedCheckIn.add(OT_TICKET_CONSTANTS.MIN_CHECKOUT_AFTER_CHECKIN_HOURS, 'hour');
+        if (updatedCheckOut.isBefore(minUpdateCheckoutTime)) {
+            throw new BadRequestException(OT_ERRORS.CHECKOUT_TOO_EARLY);
+        };
+
+        const hr = await this.userRepo.findOne({ where: { role: UserRole.HR } });
+        if (!hr) throw new NotFoundException(OT_ERRORS.HR_NOT_FOUND);
+
+        const totalMinutes = updatedCheckOut.diff(updatedCheckIn, 'minute');
+
+        const newSegmentsData = await this.otTimeSegmentHelper.splitIntoSegments(
+            updatedCheckIn.toDate(),
+            updatedCheckOut.toDate()
+        );
+
+        let compensatoryMinutes = 0;
+        let otMinutes = totalMinutes;
+        let newMode = ticket.mode;
+        const modeChanged = ticket.mode === OtMode.COMPENSATORY
+            && totalMinutes < OT_TICKET_CONSTANTS.MIN_COMPENSATORY_HOURS * 60;
+
+        if(ticket.mode === OtMode.COMPENSATORY){
+            if (totalMinutes < OT_TICKET_CONSTANTS.MIN_COMPENSATORY_HOURS * 60) {
+                // không đủ tiếng thì tự chuyển sang ot thay vì comp
+                newMode = OtMode.OT;
+                compensatoryMinutes = 0;
+                otMinutes = totalMinutes;
+            }else{
+                const tempSegments = newSegmentsData.map(seg =>
+                    this.otPlanEmployeeRepo.manager.create(OtTimeSegment, {
+                        ...seg,
+                        otPlanEmployeeId: ticketId,
+                    })
+                );
+                const result = this.otCompensatoryHelper.calculateCompensatory(tempSegments);
+                compensatoryMinutes = result.compensatoryMinutes;
+                otMinutes = result.otMinutes;
+            }
+        }
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction(); 
+
+        try {
+
+            const updateResult = await queryRunner.manager.update(OtPlanEmployee,
+                { id: ticketId, status: OtPlanEmployeeStatus.SUBMITTED },
+                {
+                    checkInAfterUpdate: updatedCheckIn.toDate(),
+                    checkOutAfterUpdate: updatedCheckOut.toDate(),
+                    updateReason: dto.reason,
+                    actualMinutes: totalMinutes,
+                    compensatoryMinutes,
+                    otMinutes,
+                    mode: newMode,
+                    status: OtPlanEmployeeStatus.UPDATED,
+                }
+            );
+            if (updateResult.affected === 0) {
+                throw new ConflictException(OT_ERRORS.TICKET_ALREADY_PROCESSED);
+            }
+            // xóa cũ, thêm segment 
+            await queryRunner.manager.delete(OtTimeSegment, { otPlanEmployeeId: ticketId });
+            const newSegmentsEntity = newSegmentsData.map(seg => queryRunner.manager.create(OtTimeSegment, {
+                ...seg,
+                otPlanEmployeeId: ticketId
+            }));
+
+            await queryRunner.manager.save(OtTimeSegment, newSegmentsEntity);
+            await queryRunner.commitTransaction();
+
+            // gửi mail
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketUpdatedByLead(
+                    ticket.employee.email,
+                    ticket.employee.name,
+                    updatedCheckIn.toDate(),
+                    updatedCheckOut.toDate(),
+                    totalMinutes,
+                    ticket.workContent,
+                    newMode,
+                    dto.reason,
+                    modeChanged,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail cập nhật OT ticket cho nhân viên ${ticket.employee.email}`, e));
+
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketUpdatedByLead(
+                    hr.email,
+                    ticket.employee.name,
+                    updatedCheckIn.toDate(),
+                    updatedCheckOut.toDate(),
+                    totalMinutes,
+                    ticket.workContent,
+                    newMode,
+                    dto.reason,
+                    modeChanged,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail cập nhật OT ticket cho HR ${hr.email}`, e));
+            
+            return {
+                message: 'Cập nhật thời gian OT thành công',
+                ...(newMode !== ticket.mode && {
+                    warning: `Mode đã tự động chuyển từ COMPENSATORY sang OT do không đủ ${OT_TICKET_CONSTANTS.MIN_COMPENSATORY_HOURS} tiếng`,
+                }),
+            };
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 }

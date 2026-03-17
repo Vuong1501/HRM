@@ -252,4 +252,33 @@ export class MailService {
       },
     });
   }
+
+  // nhân viên nhận mail khi lead cập nhật lại thời gian OT
+  async sendOtTicketUpdatedByLead(
+    to: string,
+    employeeName: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+    actualMinutes: number,
+    workContent: string,
+    mode: string,
+    updateReason: string,
+    modeChanged: boolean = false,
+  ): Promise<void> {
+      await this.mailerService.sendMail({
+          to,
+          subject: 'Thông báo: Thời gian OT của bạn đã được lead cập nhật',
+          template: 'ot-ticket-updated-by-lead',
+          context: {
+              employeeName,
+              checkInTime: dayjs(checkInTime).format('HH:mm DD/MM/YYYY'),
+              checkOutTime: dayjs(checkOutTime).format('HH:mm DD/MM/YYYY'),
+              actualMinutes,
+              workContent,
+              mode,
+              updateReason,
+              modeChanged,
+          },
+      });
+  }
 }
