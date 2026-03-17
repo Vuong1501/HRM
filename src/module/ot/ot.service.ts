@@ -290,18 +290,18 @@ export class OtService {
         }
 
         // gửi mail cho lead
-        // this.mailService.sendMailWithRetry(
-        //     () => this.mailService.sendOtTicketSubmitted(
-        //         ticket.otPlan.creator.email,
-        //         user.name,
-        //         user.departmentName,
-        //         ticket.checkInTime,
-        //         ticket.checkOutTime,
-        //         ticket.actualMinutes,
-        //         dto.workContent,
-        //     ),
-        //     'SEND_OT_NOTIFICATION_FAILED',
-        // ).catch(e => this.logger.error(`Lỗi gửi mail submit OT ticket cho lead ${ticket.otPlan.creator.email}`, e));
+        this.mailService.sendMailWithRetry(
+            () => this.mailService.sendOtTicketSubmitted(
+                ticket.otPlan.creator.email,
+                user.name,
+                user.departmentName,
+                ticket.checkInTime,
+                ticket.checkOutTime,
+                ticket.actualMinutes,
+                dto.workContent,
+            ),
+            'SEND_OT_NOTIFICATION_FAILED',
+        ).catch(e => this.logger.error(`Lỗi gửi mail submit OT ticket cho lead ${ticket.otPlan.creator.email}`, e));
 
         return {
             message: 'Nộp báo cáo công việc OT thành công',
@@ -359,32 +359,32 @@ export class OtService {
             await queryRunner.commitTransaction();
             
             // gửi mail cho nhân viên
-            // this.mailService.sendMailWithRetry(
-            //     () => this.mailService.sendOtTicketApproved(
-            //         ticket.employee.email,
-            //         ticket.employee.name,
-            //         ticket.checkInTime,
-            //         ticket.checkOutTime,
-            //         ticket.actualMinutes,
-            //         ticket.workContent,
-            //         ticket.mode,
-            //     ),
-            //     'SEND_OT_NOTIFICATION_FAILED',
-            // ).catch(e => this.logger.error(`Lỗi gửi mail duyệt OT ticket cho nhân viên ${ticket.employee.email}`, e));
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketApproved(
+                    ticket.employee.email,
+                    ticket.employee.name,
+                    ticket.checkInTime,
+                    ticket.checkOutTime,
+                    ticket.actualMinutes,
+                    ticket.workContent,
+                    ticket.mode,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail duyệt OT ticket cho nhân viên ${ticket.employee.email}`, e));
 
             // gửi mail cho hr
-            // this.mailService.sendMailWithRetry(
-            //     () => this.mailService.sendOtTicketApproved(
-            //         hr.email,
-            //         ticket.employee.name,
-            //         ticket.checkInTime,
-            //         ticket.checkOutTime,
-            //         ticket.actualMinutes,
-            //         ticket.workContent,
-            //         ticket.mode,
-            //     ),
-            //     'SEND_OT_NOTIFICATION_FAILED',
-            // ).catch(e => this.logger.error(`Lỗi gửi mail duyệt OT ticket cho HR ${hr.email}`, e));
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketApproved(
+                    hr.email,
+                    ticket.employee.name,
+                    ticket.checkInTime,
+                    ticket.checkOutTime,
+                    ticket.actualMinutes,
+                    ticket.workContent,
+                    ticket.mode,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail duyệt OT ticket cho HR ${hr.email}`, e));
 
             return { message: 'Duyệt báo cáo OT thành công' };
         } catch (error) {
@@ -425,18 +425,18 @@ export class OtService {
         }
 
         // gửi mail cho nhân viên
-        // this.mailService.sendMailWithRetry(
-        //     () => this.mailService.sendOtTicketRejected(
-        //         ticket.employee.email,
-        //         ticket.employee.name,
-        //         ticket.checkInTime,
-        //         ticket.checkOutTime,
-        //         ticket.actualMinutes,
-        //         ticket.workContent,
-        //         dto.reason,
-        //     ),
-        //     'SEND_OT_REJECTED_FAILED',
-        // ).catch(e => this.logger.error(`Lỗi gửi mail từ chối OT ticket cho ${ticket.employee.email}`, e));
+        this.mailService.sendMailWithRetry(
+            () => this.mailService.sendOtTicketRejected(
+                ticket.employee.email,
+                ticket.employee.name,
+                ticket.checkInTime,
+                ticket.checkOutTime,
+                ticket.actualMinutes,
+                ticket.workContent,
+                dto.reason,
+            ),
+            'SEND_OT_REJECTED_FAILED',
+        ).catch(e => this.logger.error(`Lỗi gửi mail từ chối OT ticket cho ${ticket.employee.email}`, e));
 
         return { message: 'Đã từ chối báo cáo OT' };
     }
