@@ -22,6 +22,7 @@ import { SubmitOtTicketDto } from './dto/submit-ot-ticket.dto';
 import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
+import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 
 @ApiTags('ot')
 @Controller('ot')
@@ -64,6 +65,16 @@ export class OtController {
         @Body('rejectedReason') rejectedReason: string,
     ) {
         return this.otService.rejectOtPlan(req.userEntity, Number(id), rejectedReason);
+    }
+
+    @Patch('plan/:id/update')
+    @CheckPolicies((ability) => ability.can(Action.Update, OtPlan))
+    updateOtPlan(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+        @Body() dto: UpdateOtPlanDto,
+    ) {
+        return this.otService.updateOtPlan(req.userEntity, Number(id), dto);
     }
 
     @Patch('ticket/:id/check-in')

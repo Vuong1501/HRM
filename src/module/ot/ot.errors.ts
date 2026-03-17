@@ -147,4 +147,28 @@ export const OT_ERRORS = {
     code: 'HR_NOT_FOUND',
     message: 'Không tìm thấy HR',
   },
+  OT_PLAN_ALREADY_UPDATED: {
+    code: 'OT_PLAN_ALREADY_UPDATED',
+    message: 'Kế hoạch OT đã được cập nhật trước đó',
+  },
+  NO_PERMISSION_UPDATE: {
+    code: 'NO_PERMISSION_UPDATE',
+    message: 'Bạn không có quyền cập nhật kế hoạch OT này',
+  },
+  NOT_YOUR_OT_PLAN: {
+    code: 'NOT_YOUR_OT_PLAN',
+    message: 'Bạn không có quyền cập nhật kế hoạch OT này',
+  },
+  OT_PLAN_ALREADY_APPROVED: {
+    code: 'OT_PLAN_ALREADY_APPROVED',
+    message: 'Kế hoạch OT đã được duyệt',
+  },
+  OT_PLAN_IN_PAST: {
+    code: 'OT_PLAN_IN_PAST',
+    message: 'Thời gian bắt đầu OT phải ở tương lai',
+  },
+  CANNOT_UPDATE_EMPLOYEES: {
+    code: 'CANNOT_UPDATE_EMPLOYEES',
+    message: 'Không thể cập nhật danh sách nhân viên trong kế hoạch OT',
+  },
 } as const;

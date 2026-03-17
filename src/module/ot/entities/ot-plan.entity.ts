@@ -8,6 +8,7 @@ import {
   JoinColumn,
   OneToMany,
   Index,
+  VersionColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { OtPlanStatus } from 'src/common/enums/ot/ot-status.enum';
@@ -48,6 +49,9 @@ export class OtPlan extends BaseEntity {
 
   @Column({type: 'datetime', nullable: true })
   approvedAt: Date | null;
+
+  @VersionColumn()
+  version: number;
 
   // Relations
   @ManyToOne(() => User)

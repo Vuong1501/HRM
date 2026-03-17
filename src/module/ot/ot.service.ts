@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
@@ -23,6 +23,7 @@ import dayjs from 'dayjs';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanQueryBuilder } from './ot-plan.query-builder';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
+import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 
 const IT_DEPARTMENT = 'IT';
 const OT_WEEKDAY_START_HOUR = 17;
@@ -449,6 +450,10 @@ export class OtService {
             throw new BadRequestException(OT_ERRORS.INVALID_TIME_RANGE);
         }
 
+        if (startTime.isBefore(dayjs())) {
+            throw new BadRequestException(OT_ERRORS.OT_PLAN_IN_PAST);
+        }
+
         // check ngày thường hay cuối tuần hoặc lễ
         const isWeekendOrHoliday = await this.calendarService.isWeekendOrHoliday(startTime);
         const durationHours = endTime.diff(startTime, 'hour', true);
@@ -703,6 +708,188 @@ export class OtService {
         ).catch(e => console.error(`Lỗi gửi mail OT bị từ chối cho quản lý ${otPlan.creator.email}`, e));
 
         return { message: 'Từ chối kế hoạch OT thành công' };
+    }
+
+    async updateOtPlan(user: User, otPlanId: number, dto: UpdateOtPlanDto) {
+        const otPlan = await this.otPlanRepo.findOne({
+            where: { id: otPlanId },
+            relations: ['employees', 'employees.employee'],
+        });
+
+        if(!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        if (otPlan.version !== dto.version) {
+            throw new ConflictException(OT_ERRORS.OT_PLAN_ALREADY_UPDATED);
+        }
+        if (otPlan.status !== OtPlanStatus.PENDING) {
+            throw new ConflictException(OT_ERRORS.OT_PLAN_NOT_PENDING);
+        }
+
+        //check quyền
+        const isITDepartment = user.departmentName === IT_DEPARTMENT;
+        const isPC = user.role === UserRole.PROJECT_COORDINATOR;
+        const isLead = user.role === UserRole.DEPARTMENT_LEAD;
+        const isAdmin = user.role === UserRole.ADMIN;
+
+        if (!isAdmin && !isLead && !isPC && !isITDepartment) {
+            throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_OR_LEAD_IT_APPROVE);
+        }
+
+        const canUpdateFull = (isPC && isITDepartment) || (isLead && !isITDepartment);
+        const canUpdatePartial = isAdmin || (isLead && isITDepartment);
+
+        if (!canUpdateFull && !canUpdatePartial) {
+            throw new ForbiddenException(OT_ERRORS.NO_PERMISSION_UPDATE);
+        }
+
+        // check quyền để tương tác với đơn
+        if (canUpdateFull && otPlan.creatorId !== user.id) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+        }
+
+        //validate thời gian
+        const newStartTime = dto.startTime ? dayjs(dto.startTime) : dayjs(otPlan.startTime);
+        const newEndTime = dto.endTime ? dayjs(dto.endTime) : dayjs(otPlan.endTime);
+
+        if (newStartTime.isAfter(newEndTime)|| newStartTime.isSame(newEndTime)) {
+            throw new BadRequestException(OT_ERRORS.INVALID_TIME_RANGE);
+        }
+
+        // Check ngày thường/cuối tuần
+        if (dto.startTime || dto.endTime) {
+            const isWeekendOrHoliday = await this.calendarService.isWeekendOrHoliday(newStartTime);
+            const durationHours = newEndTime.diff(newStartTime, 'hour', true);
+
+            if (!isWeekendOrHoliday) {
+                const isAfter1730 =
+                    newStartTime.hour() > OT_WEEKDAY_START_HOUR ||
+                    (newStartTime.hour() === OT_WEEKDAY_START_HOUR && newStartTime.minute() >= OT_WEEKDAY_START_MINUTE);
+
+                if (!isAfter1730) throw new BadRequestException(OT_ERRORS.WEEKDAY_OT_MUST_START_AFTER_1730);
+                if (durationHours > OT_WEEKDAY_MAX_HOURS) throw new BadRequestException(OT_ERRORS.WEEKDAY_OT_MAX_4_HOURS);
+            } else {
+                if (durationHours > OT_WEEKEND_MAX_HOURS) throw new BadRequestException(OT_ERRORS.WEEKEND_OT_MAX_8_HOURS);
+            }
+        }
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            if(canUpdateFull) {
+                const updateData: Partial<OtPlan> = {};
+                if (dto.startTime) updateData.startTime = dayjs(dto.startTime).toDate();
+                if (dto.endTime) updateData.endTime = dayjs(dto.endTime).toDate();
+                if (dto.reason) updateData.reason = dto.reason; 
+
+                const updateResult = await queryRunner.manager.update(OtPlan,
+                    {
+                        id: otPlanId,
+                        status: OtPlanStatus.PENDING,
+                        version: dto.version,
+                    },
+                    {
+                        ...updateData,
+                        status: OtPlanStatus.PENDING,
+                        version: dto.version + 1,
+                    }
+                );
+
+                if (updateResult.affected === 0) {
+                    throw new ConflictException(OT_ERRORS.OT_PLAN_ALREADY_APPROVED);
+                }
+
+                // update lại nhân viên nếu có thay đổi
+                if(dto.employeeIds && dto.employeeIds.length > 0) {
+                    const employees = await this.userRepo.find({
+                        where: dto.employeeIds.map(id => ({ id })),
+                    });
+
+                    if(employees.length !== dto.employeeIds.length) {
+                        throw new NotFoundException(OT_ERRORS.EMPLOYEE_NOT_FOUND);
+                    }
+
+                    const invalidEmployees = employees.filter(
+                        emp => emp.departmentName !== user.departmentName
+                    );
+                    if (invalidEmployees.length > 0) {
+                        throw new ForbiddenException(OT_ERRORS.ONLY_OWN_DEPARTMENT);
+                    }
+
+                    // bỏ nhân viên cũ và thêm nhân viên mới
+                    await queryRunner.manager.delete(OtPlanEmployee, {
+                        otPlanId: otPlanId,
+                    });
+
+                    const newEmployees = employees.map(emp =>
+                        queryRunner.manager.create(OtPlanEmployee, {
+                            otPlanId,
+                            employeeId: emp.id,
+                            status: OtPlanEmployeeStatus.WAITING,
+                        })
+                    );
+                    await queryRunner.manager.insert(OtPlanEmployee, newEmployees);
+                }
+                await queryRunner.commitTransaction();
+                return { message: 'Cập nhật kế hoạch OT thành công' };
+            } else {
+                // lead IT hoặc admin cập nhật thì nó thành updated
+
+                if (dto.employeeIds && dto.employeeIds.length > 0) {
+                    throw new ForbiddenException(OT_ERRORS.CANNOT_UPDATE_EMPLOYEES);
+                }
+                const updateData: Partial<OtPlan> = {};
+                if (dto.startTime) updateData.startTime = dayjs(dto.startTime).toDate();
+                if (dto.endTime) updateData.endTime = dayjs(dto.endTime).toDate();
+                if (dto.reason) updateData.reason = dto.reason;
+
+                // update atomic
+                const updateResult = await queryRunner.manager.update(OtPlan, 
+                    { id: otPlanId, status: OtPlanStatus.PENDING, version: dto.version },
+                    {
+                        ...updateData,
+                        status: OtPlanStatus.UPDATED,
+                        approverId: user.id,
+                        approvedAt: dayjs().toDate(),
+                        version: dto.version + 1,
+                    }
+                );
+
+                if (updateResult.affected === 0) {
+                    throw new ConflictException(OT_ERRORS.OT_PLAN_ALREADY_APPROVED);
+                }
+
+                await queryRunner.manager.update(OtPlanEmployee,
+                    { otPlanId },
+                    { status: OtPlanEmployeeStatus.PENDING }
+                );
+                await queryRunner.commitTransaction();
+                const mailStartTime = updateData.startTime ?? otPlan.startTime;
+                const mailEndTime = updateData.endTime ?? otPlan.endTime;
+                const mailReason = updateData.reason ?? otPlan.reason;
+                Promise.all(
+                otPlan.employees.map((emp) =>
+                    this.mailService.sendMailWithRetry(
+                        () => this.mailService.sendOtPlanApproved(
+                            emp.employee.email,
+                            emp.employee.name,
+                            mailStartTime,
+                            mailEndTime,
+                            mailReason,
+                        ),
+                        'SEND_OT_NOTIFICATION_FAILED',
+                    ).catch(e => console.error(`Lỗi gửi mail OT được duyệt cho ${emp.employee.email}`, e))
+                ),
+            );
+                return { message: 'Cập nhật kế hoạch OT thành công' };
+            }
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     async getOtTicketDetail(user: User, otPlanEmployeeId: number){
