@@ -256,6 +256,10 @@ export class OtService {
         if (ticket.status !== OtPlanEmployeeStatus.INPROGRESS || !ticket.checkOutTime) {
             throw new BadRequestException(OT_ERRORS.TICKET_NOT_INPROGRESS);
         }
+
+        const isLeadIT = user.role === UserRole.DEPARTMENT_LEAD && user.departmentName === IT_DEPARTMENT;
+        const hr = await this.userRepo.findOne({ where: { role: UserRole.HR } });
+        if (!hr) throw new NotFoundException(OT_ERRORS.HR_NOT_FOUND);
         
         let compensatoryMinutes = 0;
         let otMinutes = ticket.actualMinutes;
@@ -273,6 +277,51 @@ export class OtService {
             const result = this.otCompensatoryHelper.calculateCompensatory(segments);
             compensatoryMinutes = result.compensatoryMinutes;
             otMinutes = result.otMinutes;
+        }
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const updateResult = await queryRunner.manager.update(OtPlanEmployee,
+                { id: ticket.id, status: OtPlanEmployeeStatus.INPROGRESS },
+                {
+                    mode: dto.mode,
+                    workContent: dto.workContent,
+                    note: dto.note || ticket.note,
+                    compensatoryMinutes,
+                    otMinutes,
+                    status: isLeadIT
+                        ? OtPlanEmployeeStatus.APPROVED
+                        : OtPlanEmployeeStatus.SUBMITTED,
+                }
+            );
+
+            if (updateResult.affected === 0) {
+                throw new BadRequestException(OT_ERRORS.ALREADY_SUBMITTED);
+            }
+
+            // lead it thì cộng nghỉ bù luôn
+            if (isLeadIT && dto.mode === OtMode.COMPENSATORY && compensatoryMinutes > 0) {
+                const currentYear = dayjs().year();
+                const compensatoryHours = compensatoryMinutes / 60;
+
+                await queryRunner.query(
+                    `INSERT INTO leave_balances (userId, year, compensatoryBalance)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                    compensatoryBalance = compensatoryBalance + ?`,
+                    [user.id, currentYear, compensatoryHours, compensatoryHours]
+                );
+            }
+
+            await queryRunner.commitTransaction();
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
         }
 
         const updateResult = await this.otPlanEmployeeRepo.update(
@@ -618,14 +667,23 @@ export class OtService {
     // duyệt đơn OT
     async approveOtPlan(approver: User, otPlanId: number) {
 
-        if(approver.role !== UserRole.ADMIN) throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_APPROVE);
+        const isAdmin = approver.role === UserRole.ADMIN;
+        const isLeadIT = approver.role === UserRole.DEPARTMENT_LEAD && approver.departmentName === IT_DEPARTMENT;
+
+        if (!isAdmin && !isLeadIT) {
+            throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_APPROVE);
+        }
 
         const otPlan = await this.otPlanRepo.findOne({
             where: { id: otPlanId },
-            relations: ['employees', 'employees.employee'],
+            relations: ['employees', 'employees.employee', 'creator'],
         });
 
         if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+        
+        if (isLeadIT && otPlan.creator?.departmentName !== IT_DEPARTMENT) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
 
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
@@ -666,7 +724,7 @@ export class OtService {
                             otPlan.reason,
                         ),
                         'SEND_OT_NOTIFICATION_FAILED',
-                    ).catch(e => console.error(`Lỗi gửi mail OT được duyệt cho ${emp.employee.email}`, e))
+                    ).catch(e => this.logger.error(`Lỗi gửi mail OT được duyệt cho ${emp.employee.email}`, e))
                 ),
             );
             return { message: 'Duyệt kế hoạch OT thành công' };
