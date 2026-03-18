@@ -737,10 +737,13 @@ export class OtService {
 
     // từ chối đơn OT
     async rejectOtPlan(approver: User, otPlanId: number, rejectedReason: string) {
-        if(approver.role !== UserRole.ADMIN) {
+        const isAdmin = approver.role === UserRole.ADMIN;
+        const isLeadIT = approver.role === UserRole.DEPARTMENT_LEAD && approver.departmentName === IT_DEPARTMENT;
+
+        if (!isAdmin && !isLeadIT) {
             throw new ForbiddenException(OT_ERRORS.ONLY_ADMIN_REJECT);
         }
-
+        
         if(!rejectedReason || rejectedReason.trim() === '') {
             throw new BadRequestException(OT_ERRORS.REJECT_REASON_REQUIRED);
         }
@@ -751,6 +754,11 @@ export class OtService {
         });
 
         if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        if (isLeadIT && otPlan.creator?.departmentName !== IT_DEPARTMENT) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
+
 
         // atomic update Bảng Cha
         const updateResult = await this.otPlanRepo.update(
@@ -776,7 +784,7 @@ export class OtService {
                 rejectedReason,
             ),
             'SEND_OT_REJECTED_FAILED',
-        ).catch(e => console.error(`Lỗi gửi mail OT bị từ chối cho quản lý ${otPlan.creator.email}`, e));
+        ).catch(e => this.logger.error(`Lỗi gửi mail OT bị từ chối cho quản lý ${otPlan.creator.email}`, e));
 
         return { message: 'Từ chối kế hoạch OT thành công' };
     }
