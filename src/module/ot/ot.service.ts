@@ -324,39 +324,38 @@ export class OtService {
             await queryRunner.release();
         }
 
-        const updateResult = await this.otPlanEmployeeRepo.update(
-            { id: ticket.id, status: OtPlanEmployeeStatus.INPROGRESS },
-            {
-                mode: dto.mode,
-                workContent: dto.workContent,
-                note: dto.note || ticket.note,
-                compensatoryMinutes,
-                otMinutes,
-                status: OtPlanEmployeeStatus.SUBMITTED,
-            }
-        );
-
-        if (updateResult.affected === 0) {
-            throw new BadRequestException(OT_ERRORS.ALREADY_SUBMITTED);
-        }
-
         // gửi mail cho lead
-        this.mailService.sendMailWithRetry(
-            () => this.mailService.sendOtTicketSubmitted(
-                ticket.otPlan.creator.email,
-                user.name,
-                user.departmentName,
-                ticket.checkInTime,
-                ticket.checkOutTime,
-                ticket.actualMinutes,
-                dto.workContent,
-            ),
-            'SEND_OT_NOTIFICATION_FAILED',
-        ).catch(e => this.logger.error(`Lỗi gửi mail submit OT ticket cho lead ${ticket.otPlan.creator.email}`, e));
+        if (isLeadIT) {
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketApproved(
+                    hr.email,
+                    user.name,
+                    ticket.checkInTime,
+                    ticket.checkOutTime,
+                    ticket.actualMinutes,
+                    dto.workContent,
+                    dto.mode,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail cho HR ${hr.email}`, e));
+        } else {
+            this.mailService.sendMailWithRetry(
+                () => this.mailService.sendOtTicketSubmitted(
+                    ticket.otPlan.creator.email,
+                    user.name,
+                    user.departmentName,
+                    ticket.checkInTime,
+                    ticket.checkOutTime,
+                    ticket.actualMinutes,
+                    dto.workContent,
+                ),
+                'SEND_OT_NOTIFICATION_FAILED',
+            ).catch(e => this.logger.error(`Lỗi gửi mail submit OT ticket cho lead ${ticket.otPlan.creator.email}`, e));
+        }
 
         return {
             message: 'Nộp báo cáo công việc OT thành công',
-        }
+        };
     }
 
     async approveOtTicket(approver: User, otPlanEmployeeId: number) {
@@ -680,7 +679,7 @@ export class OtService {
         });
 
         if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
-        
+
         if (isLeadIT && otPlan.creator?.departmentName !== IT_DEPARTMENT) {
             throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
         }

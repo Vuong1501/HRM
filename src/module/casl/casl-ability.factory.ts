@@ -55,6 +55,9 @@ export class CaslAbilityFactory {
       can(Action.Approve, OtPlanEmployee);
       can(Action.Read, OtPlanEmployee);
       can(Action.Update, OtPlanEmployee);
+      can(Action.CheckIn, OtPlanEmployee);
+      can(Action.CheckOut, OtPlanEmployee);
+      can(Action.Submit, OtPlanEmployee);
 
     } else if (EMPLOYEE_LIKE_ROLES.includes(user.role)) {
       can(Action.Read, User);
