@@ -928,7 +928,7 @@ export class OtService {
 
         const ticket = await this.otPlanEmployeeRepo.findOne({
             where: { id: ticketId },
-            relations: ['otPlan', 'employee'],
+            relations: ['otPlan','otPlan.creator', 'employee'],
         });
 
         if (!ticket) {
@@ -938,13 +938,29 @@ export class OtService {
         if(user.role !== UserRole.DEPARTMENT_LEAD){
             throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
         }
+        const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
+
+        if (isITDepartment) {
+            if (user.departmentName !== IT_DEPARTMENT) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+            }
+        } else {
+            if (ticket.otPlan.creatorId !== user.id) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+            }
+        }
 
         if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
             throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
         }
 
-        const updatedCheckIn = dayjs(dto.updatedCheckInTime);
-        const updatedCheckOut = dayjs(dto.updatedCheckOutTime);
+        const updatedCheckIn = dto.updatedCheckInTime
+            ? dayjs(dto.updatedCheckInTime)
+            : dayjs(ticket.checkInTime);
+
+        const updatedCheckOut = dto.updatedCheckOutTime
+            ? dayjs(dto.updatedCheckOutTime)
+            : dayjs(ticket.checkOutTime);
 
         if (updatedCheckIn.isAfter(updatedCheckOut)) {
             throw new BadRequestException(OT_ERRORS.INVALID_OT_TIME);

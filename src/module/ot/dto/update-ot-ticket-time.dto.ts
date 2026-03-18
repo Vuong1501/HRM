@@ -1,11 +1,13 @@
-import { IsNotEmpty, IsString, IsDateString } from 'class-validator';
+import { IsNotEmpty, IsString, IsDateString, IsOptional } from 'class-validator';
 
 export class UpdateOtTicketTimeDto {
+  @IsOptional()
   @IsDateString()
-  updatedCheckInTime: string;
+  updatedCheckInTime?: string;
 
+  @IsOptional()
   @IsDateString()
-  updatedCheckOutTime: string;
+  updatedCheckOutTime?: string;
 
   @IsString()
   @IsNotEmpty()
