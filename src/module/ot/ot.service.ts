@@ -317,7 +317,7 @@ export class OtService {
         });
 
         if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
-        
+
         const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
         if(isITDepartment){
             if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
@@ -407,14 +407,20 @@ export class OtService {
     async rejectOtTicket(approver: User, otPlanEmployeeId: number, dto: RejectOtTicketDto) {
         const ticket = await this.otPlanEmployeeRepo.findOne({
             where: { id: otPlanEmployeeId },
-            relations: ['otPlan', 'employee'],
+            relations: ['otPlan','otPlan.creator', 'employee'],
         });
 
         if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
-        if (!dto.reason) throw new BadRequestException(OT_ERRORS.REJECT_REASON_REQUIRED);
 
-        if (ticket.otPlan.creatorId !== approver.id) {
-            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
+        if(isITDepartment){
+            if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+            }
+        } else {
+            if(ticket.otPlan.creatorId !== approver.id){
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+            }
         }
 
         if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
