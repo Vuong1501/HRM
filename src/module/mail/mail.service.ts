@@ -281,4 +281,25 @@ export class MailService {
           },
       });
   }
+
+  //khi ot bị hủy ở trạng thái đã duyệt
+  async sendOtPlanCancelled(
+    to: string,
+    employeeName: string,
+    startTime: Date,
+    endTime: Date,
+    reason: string,
+  ): Promise<void> {
+      await this.mailerService.sendMail({
+          to,
+          subject: 'Thông báo: Kế hoạch OT đã bị hủy',
+          template: 'ot-plan-cancelled',
+          context: {
+              employeeName,
+              startTime: dayjs(startTime).format('HH:mm DD/MM/YYYY'),
+              endTime: dayjs(endTime).format('HH:mm DD/MM/YYYY'),
+              reason,
+          },
+      });
+  }
 }

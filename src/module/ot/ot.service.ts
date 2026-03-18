@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
 import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { User } from '../users/entities/user.entity';
@@ -650,7 +650,6 @@ export class OtService {
                 'SEND_OT_NOTIFICATION_FAILED',
             ).catch(e => console.error(`Lỗi gửi mail OT cho người duyệt ${approver.email}`, e));
             
-
             return {
                 message: 'Tạo kế hoạch OT thành công',
                 data: savedPlan
@@ -663,7 +662,6 @@ export class OtService {
         }
     }
 
-    // duyệt đơn OT
     async approveOtPlan(approver: User, otPlanId: number) {
 
         const isAdmin = approver.role === UserRole.ADMIN;
@@ -735,7 +733,6 @@ export class OtService {
         }
     }
 
-    // từ chối đơn OT
     async rejectOtPlan(approver: User, otPlanId: number, rejectedReason: string) {
         const isAdmin = approver.role === UserRole.ADMIN;
         const isLeadIT = approver.role === UserRole.DEPARTMENT_LEAD && approver.departmentName === IT_DEPARTMENT;
@@ -969,6 +966,108 @@ export class OtService {
         } finally {
             await queryRunner.release();
         }
+    }
+
+    async cancelOtPlan (user: User, otPlanId: number){
+        const otPlan = await this.otPlanRepo.findOne({
+            where: {id: otPlanId},
+            relations: ['creator','employees', 'employees.employee'],
+        });
+
+        if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        const isITDepartment = otPlan.creator.departmentName === IT_DEPARTMENT;
+        const isPC = otPlan.creator.role === UserRole.PROJECT_COORDINATOR;
+        const isLead = otPlan.creator.role === UserRole.DEPARTMENT_LEAD;
+
+        if (isITDepartment) {
+            if (!isPC || user.id !== otPlan.creatorId) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+            }
+        } else {
+            if (!isLead || user.id !== otPlan.creatorId) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+            }
+        }
+        if (![OtPlanStatus.PENDING, OtPlanStatus.APPROVED].includes(otPlan.status)) {
+            throw new BadRequestException(OT_ERRORS.OT_PLAN_CANNOT_CANCEL);
+        }
+
+        const wasApproved = otPlan.status === OtPlanStatus.APPROVED;
+
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const updateResult = await queryRunner.manager.query(
+                `   UPDATE ot_plans
+                    SET status = ?
+                    WHERE id = ?
+                    AND status IN (?, ?)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ot_plan_employees
+                        WHERE otPlanId = ?
+                        AND status = ?
+                    )
+                `,
+                [
+                    OtPlanStatus.CANCELLED,
+                    otPlanId,
+                    OtPlanStatus.PENDING,
+                    OtPlanStatus.APPROVED,
+                    otPlanId,
+                    OtPlanEmployeeStatus.INPROGRESS,
+                ]
+            );
+
+            if (updateResult.affected === 0) {
+                throw new ConflictException(OT_ERRORS.OT_PLAN_CANNOT_CANCEL);
+            }
+
+            await queryRunner.manager.update(OtPlanEmployee, 
+            {
+                otPlanId,
+                 status: In([
+                    OtPlanEmployeeStatus.PENDING,
+                    OtPlanEmployeeStatus.WAITING,
+                ]),
+            }, {
+                status: OtPlanEmployeeStatus.CANCELLED,
+            });
+            
+            await queryRunner.commitTransaction();
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+        if (wasApproved) {
+            const employeesToNotify = otPlan.employees.filter(
+                emp => [
+                    OtPlanEmployeeStatus.PENDING,
+                    OtPlanEmployeeStatus.WAITING,
+                ].includes(emp.status)
+            );
+
+            Promise.all(
+                employeesToNotify.map((emp) =>
+                this.mailService.sendMailWithRetry(
+                    () => this.mailService.sendOtPlanCancelled(
+                        emp.employee.email,
+                        emp.employee.name,
+                        otPlan.startTime,
+                        otPlan.endTime,
+                        otPlan.reason,
+                    ),
+                    'SEND_OT_NOTIFICATION_FAILED',
+                ).catch(e => this.logger.error(`Lỗi gửi mail hủy OT cho ${emp.employee.email}`, e))
+            ),
+        );
+    }
+        
+        return { message: 'Hủy kế hoạch OT thành công' };
     }
 
     async getOtTicketDetail(user: User, otPlanEmployeeId: number){

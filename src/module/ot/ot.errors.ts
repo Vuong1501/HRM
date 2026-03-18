@@ -179,4 +179,8 @@ export const OT_ERRORS = {
     code: 'TICKET_ALREADY_PROCESSED',
     message: 'Ticket đã được xử lý trước đó',
   },
+  OT_PLAN_CANNOT_CANCEL: {
+    code: 'OT_PLAN_CANNOT_CANCEL',
+    message: 'Kế hoạch OT không thể hủy',
+  },
 } as const;

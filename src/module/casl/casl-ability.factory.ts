@@ -50,6 +50,7 @@ export class CaslAbilityFactory {
       can(Action.Update, OtPlan);
       can(Action.Approve, OtPlan);
       can(Action.Reject, OtPlan);
+      can(Action.Cancel, OtPlan);
 
       can(Action.Reject, OtPlanEmployee);
       can(Action.Approve, OtPlanEmployee);
