@@ -87,6 +87,15 @@ export class OtController {
         return this.otService.cancelOtPlan(req.userEntity, Number(id));
     }
 
+    @Get('plan/:id/detail')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlan))
+    getOtPlanDetail(
+        @Req() req: RequestWithUser,
+        @Param('id') id: string,
+    ) {
+        return this.otService.getOtPlanDetail(req.userEntity, Number(id));
+    }
+
     @Patch('ticket/:id/check-in')
     @CheckPolicies((ability) => ability.can(Action.CheckIn, OtPlanEmployee))
     checkIn(

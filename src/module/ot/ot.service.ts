@@ -1070,6 +1070,59 @@ export class OtService {
         return { message: 'Hủy kế hoạch OT thành công' };
     }
 
+    async getOtPlanDetail(user: User, otPlanId: number){
+        const otPlan = await this.otPlanRepo.findOne({
+            where: {id: otPlanId},
+            relations: ['creator','employees', 'employees.employee'],
+        });
+
+        if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        const isAdmin = user.role === UserRole.ADMIN;
+        const isLeadIT = user.role === UserRole.DEPARTMENT_LEAD && user.departmentName === IT_DEPARTMENT;
+        const isPc = user.role === UserRole.PROJECT_COORDINATOR ;
+        const isLead = user.role === UserRole.DEPARTMENT_LEAD;
+
+        if(isAdmin){
+            
+        } else if (isLeadIT || isPc){
+            if (otPlan.creator.departmentName !== IT_DEPARTMENT) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+            }
+        } else if (isLead){
+            if (otPlan.creatorId !== user.id) {
+                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+            }
+        } else {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+        }
+
+        return {
+            data: {
+                id: otPlan.id,
+                startTime: otPlan.startTime,
+                endTime: otPlan.endTime,
+                reason: otPlan.reason,
+                status: otPlan.status,
+                rejectedReason: otPlan.rejectedReason,
+                approvedAt: otPlan.approvedAt,
+                employees: otPlan.employees.map((emp) => ({
+                    ticketId: emp.id,
+                    employeeId: emp.employeeId,
+                    employeeName: emp.employee.name,
+                    employeeDepartment: emp.employee.departmentName,
+                    status: emp.status,
+                    checkInTime: emp.checkInTime,
+                    checkOutTime: emp.checkOutTime,
+                    workContent: emp.workContent,
+                    actualMinutes: emp.actualMinutes,
+                    mode: emp.mode,
+                    rejectedReason: emp.rejectedReason,
+                })),
+            }
+        };
+    }
+
     async getOtTicketDetail(user: User, otPlanEmployeeId: number){
         const otPlanEmployee = await this.otPlanEmployeeRepo.findOne({
             where: {id: otPlanEmployeeId, employeeId: user.id},
