@@ -57,12 +57,12 @@ export class LeaveService {
     private storageService: StorageService
   ) {}
 
-  async getLeaveList(user: User, query: LeaveListQueryDto) {
+  async getLeaveList(user: User, query: LeaveListQueryDto, isSelf = false) {
     const { page = 1, limit = 10 } = query;
 
     let qb = this.queryBuilder.buildBaseQuery();
 
-    qb = this.queryBuilder.applyAuthorization(qb, user);
+    qb = this.queryBuilder.applyAuthorization(qb, user, isSelf);
     qb = this.queryBuilder.applyFilters(qb, query);
 
     // query đếm tổng trước
@@ -73,13 +73,22 @@ export class LeaveService {
 
     dataQb.select([
       'lr.id AS id',
+      'lr.userId AS userId',
       'lr.leaveType AS leaveType',
+      'lr.leaveSubType AS leaveSubType',
+      'lr.startHalfDayType AS startHalfDayType',
+      'lr.endHalfDayType AS endHalfDayType',
       'lr.status AS status',
       'lr.startDate AS startDate',
       'lr.endDate AS endDate',
+      'lr.reason AS reason',
       'lr.createdAt AS createdAt',
       'user.name AS employeeName',
       'user.departmentName AS department',
+      'approver.name AS approverName',
+      'lr.approvedAt AS approvedAt',
+      'lr.rejectionReason AS rejectionReason',
+      'lr.cancelReason AS cancelReason',
     ])
     .orderBy('lr.createdAt', 'DESC')
     .offset((page - 1) * limit)
@@ -89,13 +98,24 @@ export class LeaveService {
 
     const data = rawData.map((item) => ({
       id: item.id,
+      userId: item.userId,
       leaveType: item.leaveType,
+      leaveSubType: item.leaveSubType,
+      startHalfDayType: item.startHalfDayType,
+      endHalfDayType: item.endHalfDayType,
       status: item.status,
       startDate: item.startDate,
       endDate: item.endDate,
+      reason: item.reason,
       createdAt: item.createdAt,
-      employeeName: item.employeeName,
-      department: item.department,
+      user: {
+        name: item.employeeName,
+        departmentName: item.department,
+      },
+      approver: item.approverName ? { name: item.approverName } : null,
+      approvedAt: item.approvedAt,
+      rejectionReason: item.rejectionReason,
+      cancelReason: item.cancelReason,
     }));
 
     return {
@@ -269,7 +289,7 @@ export class LeaveService {
   }
   // lấy đơn xin nghỉ của mình
   async getListMyLeaveRequests(user: User, query: LeaveListQueryDto) {
-    return this.getLeaveList(user, query);
+    return this.getLeaveList(user, query, true);
   }
 
   /**
@@ -296,7 +316,73 @@ export class LeaveService {
 
   // lấy danh sách đơn nghỉ của phòng ban của mình
   async getListRequests(user: User, query: LeaveListQueryDto) {
-    return this.getLeaveList(user, query);
+    return this.getLeaveList(user, query, false);
+  }
+
+  // HR xem danh sách đơn đã được APPROVED (dùng cho màn hình report)
+  async getApprovedLeaveReport(user: User, query: LeaveListQueryDto) {
+    if (user.role !== UserRole.HR) {
+      throw new ForbiddenException('Chỉ HR mới có quyền xem báo cáo này');
+    }
+
+    const { page = 1, limit = 10 } = query;
+
+    let qb = this.queryBuilder.buildBaseQuery();
+    qb = this.queryBuilder.applyHRReportAuthorization(qb, user);
+    qb = this.queryBuilder.applyFilters(qb, query);
+
+    const total = await qb.getCount();
+
+    const dataQb = qb.clone();
+    dataQb.select([
+      'lr.id AS id',
+      'lr.userId AS userId',
+      'lr.leaveType AS leaveType',
+      'lr.leaveSubType AS leaveSubType',
+      'lr.startHalfDayType AS startHalfDayType',
+      'lr.endHalfDayType AS endHalfDayType',
+      'lr.status AS status',
+      'lr.startDate AS startDate',
+      'lr.endDate AS endDate',
+      'lr.reason AS reason',
+      'lr.createdAt AS createdAt',
+      'user.name AS employeeName',
+      'user.departmentName AS department',
+      'approver.name AS approverName',
+      'lr.approvedAt AS approvedAt',
+    ])
+    .orderBy('lr.approvedAt', 'DESC')
+    .offset((page - 1) * limit)
+    .limit(limit);
+
+    const rawData = await dataQb.getRawMany();
+
+    const data = rawData.map((item) => ({
+      id: item.id,
+      userId: item.userId,
+      leaveType: item.leaveType,
+      leaveSubType: item.leaveSubType,
+      startHalfDayType: item.startHalfDayType,
+      endHalfDayType: item.endHalfDayType,
+      status: item.status,
+      startDate: item.startDate,
+      endDate: item.endDate,
+      reason: item.reason,
+      createdAt: item.createdAt,
+      approvedAt: item.approvedAt,
+      user: {
+        name: item.employeeName,
+        departmentName: item.department,
+      },
+      approver: item.approverName ? { name: item.approverName } : null,
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      lastPage: Math.ceil(total / limit),
+    };
   }
 
   // duyệt đơn nghỉ
@@ -845,7 +931,7 @@ export class LeaveService {
       return;
     }
     
-    // Nếu là Phép có Lương/Phép Bảo Hiểm
+    // Nếu là Phép Bảo Hiểm hoặc Việc Riêng
     if (!leaveSubType) {
       throw new BadRequestException(LEAVE_ERRORS.SUBTYPE_REQUIRED);
     }

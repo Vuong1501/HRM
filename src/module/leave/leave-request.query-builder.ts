@@ -18,27 +18,41 @@ export class LeaveRequestQueryBuilder {
     buildBaseQuery(): SelectQueryBuilder<LeaveRequest>{
         return this.leaveRequestRepo
             .createQueryBuilder('lr')
-            .leftJoinAndSelect('lr.user', 'user');
+            .leftJoinAndSelect('lr.user', 'user')
+            .leftJoin('lr.approver', 'approver');
     }
 
     applyAuthorization(
         qb: SelectQueryBuilder<LeaveRequest>,
-        user: User
+        user: User,
+        isSelf: boolean = false
     ): SelectQueryBuilder<LeaveRequest> {
 
-        if (EMPLOYEE_LIKE_ROLES.includes(user.role)) {
+        if (isSelf) {
             qb.andWhere('user.id = :id', { id: user.id });
+            return qb;
         }
 
         if (user.role === UserRole.DEPARTMENT_LEAD) {
             qb.andWhere('user.departmentName = :dept', {
                 dept: user.departmentName,
             });
+            // Lead không tự duyệt đơn của mình
+            qb.andWhere('user.id != :id', { id: user.id });
         }
 
         if (user.role === UserRole.HR) {
-            qb.andWhere('lr.status = :status', {
-                status: LeaveRequestStatus.APPROVED,
+            // HR xem đơn nhân viên cùng phòng ban, trừ đơn của chính mình
+            qb.andWhere('user.departmentName = :dept', {
+                dept: user.departmentName,
+            });
+            qb.andWhere('user.id != :id', { id: user.id });
+        }
+
+        if (user.role === UserRole.ADMIN) {
+            // Admin thấy đơn của Lead và HR
+            qb.andWhere('user.role IN (:...roles)', {
+                roles: [UserRole.DEPARTMENT_LEAD, UserRole.HR],
             });
         }
 
@@ -82,6 +96,21 @@ export class LeaveRequestQueryBuilder {
             });
         }
 
+        return qb;
+    }
+
+    // Dành riêng cho màn hình report của HR: chỉ lấy đơn đã APPROVED
+    applyHRReportAuthorization(
+        qb: SelectQueryBuilder<LeaveRequest>,
+        user: User,
+    ): SelectQueryBuilder<LeaveRequest> {
+        qb.andWhere('lr.status = :status', {
+            status: LeaveRequestStatus.APPROVED,
+        });
+        // HR chỉ xem trong phòng ban của mình
+        qb.andWhere('user.departmentName = :dept', {
+            dept: user.departmentName,
+        });
         return qb;
     }
 }

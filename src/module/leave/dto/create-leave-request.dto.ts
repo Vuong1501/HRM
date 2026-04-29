@@ -18,7 +18,7 @@ export class CreateLeaveRequestDto {
   endDate: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   reason: string;
 
   @IsEnum(HalfDayType)

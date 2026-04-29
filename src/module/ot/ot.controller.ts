@@ -153,6 +153,14 @@ export class OtController {
         return this.otService.rejectOtTicket(req.userEntity, Number(id), dto);
     }
 
+    @Get('ticket/my-tickets')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
+    getMyTickets(
+        @Req() req: RequestWithUser,
+        @Query() query: any,
+    ) {
+        return this.otService.getMyTickets(req.userEntity, query);
+    }
 
     @Get('ticket/my-ot-ticket/:id')
     @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))

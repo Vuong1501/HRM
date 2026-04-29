@@ -79,6 +79,17 @@ export class LeaveController {
     return this.leaveService.getListRequests(req.userEntity, query);
   }
 
+  // HR xem báo cáo đơn đã được APPROVED (màn hình report)
+  @Get('report/approved')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getApprovedLeaveReport(
+    @Req() req: RequestWithUser,
+    @Query() query: LeaveListQueryDto,
+  ) {
+    return this.leaveService.getApprovedLeaveReport(req.userEntity, query);
+  }
+
   // lead_dep, admin duyệt đơn nghỉ
   @Patch(':id/approve')
   @CheckPolicies((ability) =>

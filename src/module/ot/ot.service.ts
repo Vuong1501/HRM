@@ -108,6 +108,24 @@ export class OtService {
         };
     }
 
+    async getMyTickets(user: User, query: any) {
+        const { page = 1, limit = 10 } = query;
+        const [data, total] = await this.otPlanEmployeeRepo.findAndCount({
+            where: { employeeId: user.id },
+            relations: ['otPlan', 'otPlan.creator'],
+            order: { id: 'DESC' },
+            skip: (page - 1) * limit,
+            take: limit,
+        });
+
+        return {
+            data,
+            total,
+            page,
+            lastPage: Math.ceil(total / limit),
+        };
+    }
+
     async checkIn(user: User, otPlanEmployeeId: number) {
         const ticket = await this.otPlanEmployeeRepo.findOne({
             where: { id: otPlanEmployeeId },
