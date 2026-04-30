@@ -241,7 +241,7 @@ export class LeaveService {
         const attachments = uploadedFilesData.map((data) => {
           return queryRunner.manager.create(LeaveAttachment, {
             leaveRequestId: savedLeave.id,
-            originalName: data.file.originalname,
+            originalName: Buffer.from(data.file.originalname, 'latin1').toString('utf8'),
             fileKey: data.fileKey,          
             size: data.file.size,
             mimeType: data.file.mimetype,
@@ -733,7 +733,7 @@ export class LeaveService {
         const attachments = uploadedFilesData.map((data) => {
           return queryRunner.manager.create(LeaveAttachment, {
             leaveRequestId: leave.id, 
-            originalName: data.file.originalname,
+            originalName: Buffer.from(data.file.originalname, 'latin1').toString('utf8'),
             fileKey: data.fileKey,         
             size: data.file.size,
             mimeType: data.file.mimetype,
@@ -775,11 +775,20 @@ export class LeaveService {
     
     if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
 
+    // 1. Nhân viên/PC: Chỉ được xem đơn của chính mình
     if (
       EMPLOYEE_LIKE_ROLES.includes(user.role) &&
       leave.userId !== user.id
     ) {
       throw new ForbiddenException(LEAVE_ERRORS.ONLY_VIEW_OWN);
+    }
+
+    // 2. Lead & HR (trong màn hình quản lý/duyệt): Chỉ được xem đơn của nhân viên trong cùng phòng ban
+    if (
+      (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.HR) &&
+      leave.user.departmentName !== user.departmentName
+    ) {
+      throw new ForbiddenException(LEAVE_ERRORS.VIEW_OWN_DEPARTMENT_ONLY);
     }
 
     const startDate = dayjs(leave.startDate);
@@ -792,11 +801,24 @@ export class LeaveService {
     );
 
     return {
-      startDate: leave.startDate,
-      endDate: leave.endDate,
-      totalDays,
+      id: leave.id,
+      userId: leave.userId,
+      user: {
+        name: leave.user.name,
+      },
       leaveType: leave.leaveType,
+      leaveSubType: leave.leaveSubType,
+      startDate: leave.startDate,
+      startHalfDayType: leave.startHalfDayType,
+      endDate: leave.endDate,
+      endHalfDayType: leave.endHalfDayType,
+      totalDays,
       reason: leave.reason,
+      status: leave.status,
+      rejectionReason: leave.rejectionReason,
+      cancelReason: leave.cancelReason,
+      approver: leave.approver ? { name: leave.approver.name } : null,
+      approvedAt: leave.approvedAt,
       attachments:
       leave.attachments?.map((att) => ({
         id: att.id,
@@ -818,18 +840,26 @@ export class LeaveService {
 
   if (
     EMPLOYEE_LIKE_ROLES.includes(user.role) &&
-    attachment.leaveRequest.userId !== user.id
+    attachment.leaveRequest?.userId !== user.id
   ) {
     throw new ForbiddenException(LEAVE_ERRORS.VIEW_ATTACHMENT_FORBIDDEN);
   }
 
+  // Phân quyền cho Lead và HR: Chỉ xem được file đính kèm của nhân viên cùng phòng ban
+  if (
+    (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.HR) &&
+    attachment.leaveRequest?.user?.departmentName !== user.departmentName
+  ) {
+    throw new ForbiddenException(LEAVE_ERRORS.VIEW_OWN_DEPARTMENT_ONLY);
+  }
+
     const fileStream = await this.storageService.getFileStream(attachment.fileKey);
 
-    //  Set header để xem inline, không tải xuống
+    //  Set header để xem inline, không tải xuống (hỗ trợ tên file tiếng Việt)
     res.setHeader('Content-Type', attachment.mimeType);
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${attachment.originalName}"`,
+      `inline; filename="${encodeURIComponent(attachment.originalName)}"; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
     );
 
     fileStream.pipe(res); 

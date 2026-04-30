@@ -87,6 +87,10 @@ export const LEAVE_ERRORS = {
     code: 'ONLY_VIEW_OWN',
     message: 'Bạn chỉ có thể xem chi tiết đơn của mình',
   },
+  VIEW_OWN_DEPARTMENT_ONLY: {
+    code: 'VIEW_OWN_DEPARTMENT_ONLY',
+    message: 'Bạn chỉ có quyền xem đơn của nhân viên trong phòng ban mình',
+  },
   CANCEL_OWN_ONLY: {
     code: 'CANCEL_OWN_ONLY',
     message: 'Bạn không có quyền hủy đơn này',

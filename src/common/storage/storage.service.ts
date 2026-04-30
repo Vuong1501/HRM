@@ -1,5 +1,4 @@
-
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -48,14 +47,19 @@ export class StorageService {
   }
 
   async getFileStream(fileKey: string): Promise<Readable> {
-    const response = await this.s3.send(
-      new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: fileKey,
-      }),
-    );
+    try {
+      const response = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: this.bucketName,
+          Key: fileKey,
+        }),
+      );
 
-    return response.Body as Readable;
+      return response.Body as Readable;
+    } catch (error) {
+      this.logger.error(`Lỗi tải file từ MinIO: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`STORAGE_ERROR: Không thể tải file từ hệ thống lưu trữ (${error.message})`);
+    }
   }
 
   async deleteFile(fileKey: string): Promise<void> {
