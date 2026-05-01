@@ -127,4 +127,8 @@ export const LEAVE_ERRORS = {
     code: 'START_DATE_NOT_FUTURE',
     message: 'startDate không được là ngày trong tương lai',
   },
+  LEAVE_MODIFIED: {
+    code: 'LEAVE_MODIFIED',
+    message: 'Đơn nghỉ đã bị sửa đổi',
+  },
 } as const;

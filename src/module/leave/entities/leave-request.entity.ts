@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
+  VersionColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { LeaveType } from 'src/common/enums/leave-type.enum';
@@ -108,5 +109,9 @@ export class LeaveRequest extends BaseEntity {
   // Thời điểm duyệt
   @Column({ type: 'timestamp', nullable: true })
   approvedAt: Date | null;
+
+  // Optimistic locking: chỉ dùng cho LeaveRequest, tự tăng mỗi lần update
+  @VersionColumn({ default: 1 })
+  version: number;
 
 }

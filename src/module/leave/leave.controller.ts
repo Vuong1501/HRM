@@ -25,6 +25,7 @@ import { LeaveRequest } from './entities/leave-request.entity';
 import { Action } from 'src/common/enums/action.enum';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { LeaveListQueryDto } from './dto/leave-list-query.dto';
+import { ApproveLeaveDto } from './dto/approve-leave.dto';
 import type  { Response } from 'express';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
@@ -97,8 +98,9 @@ export class LeaveController {
   approveRequest(
     @Req() req: RequestWithUser,
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApproveLeaveDto,
   ) {
-    return this.leaveService.approveLeaveRequest(req.user.userId, id);
+    return this.leaveService.approveLeaveRequest(req.user.userId, id, dto);
   }
 
   // Department Lead / Admin: Từ chối đơn

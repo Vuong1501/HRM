@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
@@ -12,6 +13,7 @@ import { LeaveBalance } from './entities/leave-balance.entity';
 import { LeaveConfig } from './entities/leave-config.entity';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveDto } from './dto/reject-leave.dto';
+import { ApproveLeaveDto } from './dto/approve-leave.dto';
 import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { LeaveType } from 'src/common/enums/leave-type.enum';
 import { User } from '../users/entities/user.entity';
@@ -386,7 +388,7 @@ export class LeaveService {
   }
 
   // duyệt đơn nghỉ
-  async approveLeaveRequest(userId: number, requestId: number) {
+  async approveLeaveRequest(userId: number, requestId: number, dto: ApproveLeaveDto) {
 
     // lấy ra đơn nghỉ
     const leave = await this.leaveRequestRepo.findOne({
@@ -398,8 +400,9 @@ export class LeaveService {
     //lấy ra id người đang đăng nhập để kiểm tra quyền 
     const user = await this.userRepo.findOneBy({id: userId})
     if (!user) throw new NotFoundException(LEAVE_ERRORS.APPROVER_NOT_FOUND);
+    // Lead & HR: Chỉ duyệt đơn của nhân viên cùng phòng ban
     if (
-      user.role === UserRole.DEPARTMENT_LEAD &&
+      (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.HR) &&
       leave.user.departmentName !== user.departmentName
     ) {
       throw new ForbiddenException(LEAVE_ERRORS.APPROVE_OWN_DEPARTMENT_ONLY);
@@ -419,9 +422,17 @@ export class LeaveService {
 
     try {
       // 1. ATOMIC UPDATE Bảng Cha
+      // Optimistic locking chuẩn: so sánh version (số nguyên), không có precision mismatch
+      if (dto.version !== undefined && leave.version !== dto.version) {
+        throw new ConflictException(LEAVE_ERRORS.LEAVE_MODIFIED);
+      }
+
       const updateResult = await queryRunner.manager.update(
         LeaveRequest,
-        { id: requestId, status: LeaveRequestStatus.PENDING },
+        { 
+          id: requestId, 
+          status: LeaveRequestStatus.PENDING, 
+        },
         {
           status: LeaveRequestStatus.APPROVED,
           approverId: user.id,
@@ -504,16 +515,25 @@ export class LeaveService {
       relations: ['user'],
     });
     if (!leave) throw new NotFoundException(LEAVE_ERRORS.LEAVE_NOT_FOUND);
+    // Lead & HR: Chỉ từ chối đơn của nhân viên cùng phòng ban
     if (
-      user.role === UserRole.DEPARTMENT_LEAD &&
+      (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.HR) &&
       leave.user.departmentName !== user.departmentName
     ) {
       throw new ForbiddenException(LEAVE_ERRORS.REJECT_OWN_DEPARTMENT_ONLY);
     }
 
+    // Optimistic locking chuẩn: so sánh version
+    if (dto.version !== undefined && leave.version !== dto.version) {
+      throw new ConflictException(LEAVE_ERRORS.LEAVE_MODIFIED);
+    }
+
     // update atomic
     const updateResult = await this.leaveRequestRepo.update(
-        { id: requestId, status: LeaveRequestStatus.PENDING },
+        { 
+          id: requestId, 
+          status: LeaveRequestStatus.PENDING,
+        },
         {
             status: LeaveRequestStatus.REJECTED,
             rejectionReason: dto.rejectionReason,
@@ -633,7 +653,11 @@ export class LeaveService {
     if (leave.status !== LeaveRequestStatus.PENDING) {
       throw new BadRequestException(LEAVE_ERRORS.ONLY_UPDATE_PENDING);
     }
-    Object.assign(leave, dto);
+    if (!dayjs(leave.updatedAt).isSame(dayjs(dto.clientUpdatedAt))) {
+      throw new ConflictException(LEAVE_ERRORS.LEAVE_MODIFIED);
+    }
+    const { clientUpdatedAt, ...updateData } = dto;
+    Object.assign(leave, updateData);
 
     // Kiểm tra tính hợp lệ của Sự ghép cặp Loại Phép - Lý do Phép
     this.validateLeaveSubType(leave.leaveType, leave.leaveSubType);
@@ -819,6 +843,8 @@ export class LeaveService {
       cancelReason: leave.cancelReason,
       approver: leave.approver ? { name: leave.approver.name } : null,
       approvedAt: leave.approvedAt,
+      updatedAt: leave.updatedAt,
+      version: leave.version,
       attachments:
       leave.attachments?.map((att) => ({
         id: att.id,
