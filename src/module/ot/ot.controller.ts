@@ -24,6 +24,7 @@ import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
+import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
 
 @ApiTags('ot')
 @Controller('ot')
@@ -110,8 +111,9 @@ export class OtController {
     checkOut(
         @Req() req: RequestWithUser,
         @Param('id') ticketId: string,
+        @Query('mockTime') mockTime?: string, // để test segments
     ) {
-        return this.otService.checkOut(req.userEntity, Number(ticketId));
+        return this.otService.checkOut(req.userEntity, Number(ticketId), mockTime);
     }
 
     @Patch('ticket/:id/submit')
@@ -157,12 +159,21 @@ export class OtController {
     @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
     getMyTickets(
         @Req() req: RequestWithUser,
-        @Query() query: any,
+        @Query() query: OtTicketListQueryDto,
     ) {
         return this.otService.getMyTickets(req.userEntity, query);
     }
 
-    @Get('ticket/my-ot-ticket/:id')
+    @Get('ticket/get-list')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
+    getListOtTickets(
+        @Req() req: RequestWithUser,
+        @Query() query: OtTicketListQueryDto,
+    ) {
+        return this.otService.getListOtTickets(req.userEntity, query);
+    }
+
+    @Get('ticket/:id')
     @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
     getOtTicketDetail(
         @Req() req: RequestWithUser,

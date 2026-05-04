@@ -29,6 +29,11 @@ export class OtPlanQueryBuilder {
             throw new ForbiddenException('Bạn không có quyền xem Danh sách Kế hoạch OT');
         }
 
+        // Admin chỉ thấy plan của các phòng không phải IT (phòng IT do Lead IT duyệt)
+        if (user.role === UserRole.ADMIN) {
+            qb.andWhere('creator.departmentName != :itDept', { itDept: 'IT' });
+        }
+
         if (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.PROJECT_COORDINATOR) {
             qb.andWhere('creator.departmentName = :dept', {
                 dept: user.departmentName,

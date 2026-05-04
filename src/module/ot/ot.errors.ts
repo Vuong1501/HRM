@@ -183,4 +183,8 @@ export const OT_ERRORS = {
     code: 'OT_PLAN_CANNOT_CANCEL',
     message: 'Kế hoạch OT không thể hủy',
   },
+  CANNOT_APPROVE_OWN_PLAN: {
+    code: 'CANNOT_APPROVE_OWN_PLAN',
+    message: 'Bạn không thể duyệt kế hoạch OT do chính mình tạo',
+  },
 } as const;

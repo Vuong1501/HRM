@@ -34,8 +34,20 @@ export class CaslAbilityFactory {
       can(Action.Approve, LeaveRequest);
       can(Action.Reject, LeaveRequest);
 
-      // can(Action.Read, OtPlan);
-      // can(Action.Cancel, OtPlan)
+      can(Action.Read, OtPlan);
+      can(Action.Create, OtPlan);
+      can(Action.Update, OtPlan);
+      can(Action.Approve, OtPlan);
+      can(Action.Reject, OtPlan);
+      can(Action.Cancel, OtPlan);
+
+      can(Action.Reject, OtPlanEmployee);
+      can(Action.Approve, OtPlanEmployee);
+      can(Action.Read, OtPlanEmployee);
+      can(Action.Update, OtPlanEmployee);
+      can(Action.CheckIn, OtPlanEmployee);
+      can(Action.CheckOut, OtPlanEmployee);
+      can(Action.Submit, OtPlanEmployee);
 
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User);

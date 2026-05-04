@@ -18,6 +18,7 @@ export class UsersService {
       id: user.id,
       email: user.email,
       name: user.name,
+      departmentName: user.departmentName,
       role: user.role,
       createdAt: user.createdAt,
     };
@@ -45,5 +46,32 @@ export class UsersService {
       throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
     }
     return user;
+  }
+
+  async getEmployeesList(requesterId: number, search?: string) {
+    const requester = await this.userRepository.findOneBy({ id: requesterId });
+    if (!requester) {
+      throw new NotFoundException(APP_ERRORS.USER_NOT_FOUND);
+    }
+
+    const query = this.userRepository.createQueryBuilder('user')
+      .select([
+        'user.id', 
+        'user.name', 
+        'user.departmentName', 
+        'user.role', 
+      ]);
+
+    // Tất cả mọi người (kể cả admin) chỉ xem được nhân viên trong cùng phòng ban của mình
+    if (!requester.departmentName) {
+      return []; // Nếu người dùng chưa được gán phòng ban thì trả về mảng rỗng
+    }
+    query.where('user.departmentName = :dept', { dept: requester.departmentName });
+
+    if (search) {
+      query.andWhere('(user.name LIKE :search)', { search: `%${search}%` });
+    }
+
+    return await query.getMany();
   }
 }

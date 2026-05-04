@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, FindOptionsWhere } from 'typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
 import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { User } from '../users/entities/user.entity';
@@ -23,6 +23,8 @@ import dayjs from 'dayjs';
 import { RejectOtTicketDto } from './dto/reject-ot-ticket.dto';
 import { OtPlanQueryBuilder } from './ot-plan.query-builder';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
+import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
+import { OtTicketQueryBuilder } from './ot-ticket.query-builder';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 
@@ -31,6 +33,7 @@ const OT_WEEKDAY_START_HOUR = 17;
 const OT_WEEKDAY_START_MINUTE = 30;
 const OT_WEEKDAY_MAX_HOURS = 4;
 const OT_WEEKEND_MAX_HOURS = 8;
+const WORKING_HOURS_PER_DAY = 8;
 
 @Injectable()
 export class OtService {
@@ -57,6 +60,7 @@ export class OtService {
         private readonly otTimeSegmentHelper: OtTimeSegmentHelper,
         private readonly otCompensatoryHelper: OtCompensatoryHelper,
         private readonly otPlanQueryBuilder: OtPlanQueryBuilder,
+        private readonly otTicketQueryBuilder: OtTicketQueryBuilder,
     ) {}
 
     async getListOtPlans(user: User, query: OtPlanListQueryDto) {
@@ -108,14 +112,127 @@ export class OtService {
         };
     }
 
-    async getMyTickets(user: User, query: any) {
+    async getMyTickets(user: User, query: OtTicketListQueryDto) {
         const { page = 1, limit = 10 } = query;
-        const [data, total] = await this.otPlanEmployeeRepo.findAndCount({
-            where: { employeeId: user.id },
-            relations: ['otPlan', 'otPlan.creator'],
-            order: { id: 'DESC' },
-            skip: (page - 1) * limit,
-            take: limit,
+        let qb = this.otTicketQueryBuilder.buildBaseQuery();
+        
+        // Cố định điều kiện lọc cho my-tickets: chỉ lấy của user này
+        qb.andWhere('ticket.employeeId = :userId', { userId: user.id });
+
+        // Áp dụng các filter khác (status, search, date...)
+        qb = this.otTicketQueryBuilder.applyFilters(qb, query);
+
+        // query đếm tổng trước
+        const total = await qb.getCount();
+
+        //query lấy dữ liệu
+        const dataQb = qb.clone();
+
+        dataQb.select([
+            'ticket.id AS id',
+            'ticket.otPlanId AS otPlanId',
+            'otPlan.reason AS otPlanReason',
+            'otPlan.startTime AS otPlanStartTime',
+            'otPlan.endTime AS otPlanEndTime',
+            'employee.id AS employeeId',
+            'employee.name AS employeeName',
+            'employee.departmentName AS employeeDepartment',
+            'ticket.status AS status',
+            'ticket.checkInTime AS checkInTime',
+            'ticket.checkOutTime AS checkOutTime',
+            'ticket.actualMinutes AS actualMinutes',
+            'ticket.mode AS mode',
+            'ticket.rejectedReason AS rejectedReason',
+            'ticket.createdAt AS createdAt',
+        ])
+        .orderBy('ticket.createdAt', 'DESC')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+        const rawData = await dataQb.getRawMany();
+
+        const data = rawData.map((item) => {
+            return {
+                id: item.id,
+                otPlanId: item.otPlanId,
+                otPlanReason: item.otPlanReason,
+                otPlanStartTime: item.otPlanStartTime,
+                otPlanEndTime: item.otPlanEndTime,
+                employeeId: item.employeeId,
+                employeeName: item.employeeName,
+                employeeDepartment: item.employeeDepartment,
+                status: item.status,
+                checkInTime: item.checkInTime,
+                checkOutTime: item.checkOutTime,
+                actualMinutes: item.actualMinutes,
+                mode: item.mode,
+                rejectedReason: item.rejectedReason,
+                createdAt: item.createdAt,
+            };
+        });
+
+        return {
+            data,
+            total,
+            page,
+            lastPage: Math.ceil(total / limit),
+        };
+    }
+
+    async getListOtTickets(user: User, query: OtTicketListQueryDto) {
+        const { page = 1, limit = 10 } = query;
+        let qb = this.otTicketQueryBuilder.buildBaseQuery();
+        
+        qb = this.otTicketQueryBuilder.applyAuthorization(qb, user);
+        qb = this.otTicketQueryBuilder.applyFilters(qb, query);
+
+        // query đếm tổng trước
+        const total = await qb.getCount();
+
+        //query lấy dữ liệu
+        const dataQb = qb.clone();
+
+        dataQb.select([
+            'ticket.id AS id',
+            'ticket.otPlanId AS otPlanId',
+            'otPlan.reason AS otPlanReason',
+            'otPlan.startTime AS otPlanStartTime',
+            'otPlan.endTime AS otPlanEndTime',
+            'employee.id AS employeeId',
+            'employee.name AS employeeName',
+            'employee.departmentName AS employeeDepartment',
+            'ticket.status AS status',
+            'ticket.checkInTime AS checkInTime',
+            'ticket.checkOutTime AS checkOutTime',
+            'ticket.actualMinutes AS actualMinutes',
+            'ticket.mode AS mode',
+            'ticket.rejectedReason AS rejectedReason',
+            'ticket.createdAt AS createdAt',
+        ])
+        .orderBy('ticket.createdAt', 'DESC')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+        const rawData = await dataQb.getRawMany();
+
+        const data = rawData.map((item) => {
+            return {
+                id: item.id,
+                otPlanId: item.otPlanId,
+                otPlanReason: item.otPlanReason,
+                otPlanStartTime: item.otPlanStartTime,
+                otPlanEndTime: item.otPlanEndTime,
+                employeeId: item.employeeId,
+                employeeName: item.employeeName,
+                employeeDepartment: item.employeeDepartment,
+                status: item.status,
+                checkInTime: item.checkInTime,
+                checkOutTime: item.checkOutTime,
+                actualMinutes: item.actualMinutes,
+                mode: item.mode,
+                rejectedReason: item.rejectedReason,
+                createdAt: item.createdAt,
+            };
         });
 
         return {
@@ -179,7 +296,7 @@ export class OtService {
         };
     }
 
-    async checkOut(user: User, otPlanEmployeeId: number) {
+    async checkOut(user: User, otPlanEmployeeId: number, mockTime?: string) {
 
         const ticket = await this.otPlanEmployeeRepo.findOne({
             where: { id: otPlanEmployeeId },
@@ -200,7 +317,10 @@ export class OtService {
             throw new BadRequestException(OT_ERRORS.ALREADY_CHECKED_OUT);
         }
 
-        const now = dayjs();
+        const now = (mockTime && process.env.NODE_ENV === 'development')
+        ? dayjs(mockTime)
+        : dayjs();
+
         const checkInTime = dayjs(ticket.checkInTime);
 
         // Phải checkout sau thời gian checkin ít nhất 1 giờ
@@ -320,10 +440,10 @@ export class OtService {
                 throw new BadRequestException(OT_ERRORS.ALREADY_SUBMITTED);
             }
 
-            // lead it thì cộng nghỉ bù luôn
+            // lead it thì cộng nghỉ bù luôn (vì đơn đã tự duyệt)
             if (isLeadIT && dto.mode === OtMode.COMPENSATORY && compensatoryMinutes > 0) {
                 const currentYear = dayjs().year();
-                const compensatoryHours = compensatoryMinutes / 60;
+                const compensatoryHours = compensatoryMinutes / 60 / WORKING_HOURS_PER_DAY;
 
                 await queryRunner.query(
                     `INSERT INTO leave_balances (userId, year, compensatoryBalance)
@@ -384,16 +504,19 @@ export class OtService {
 
         if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
 
-        const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
-        if(isITDepartment){
-            if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
-                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
-            }
-        } else {
-            if(ticket.otPlan.creatorId !== approver.id){
-                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        if(approver.role !== UserRole.ADMIN){
+            const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
+            if(isITDepartment){
+                if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
+                    throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+                }
+            } else {
+                if(ticket.otPlan.creatorId !== approver.id){
+                    throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+                }
             }
         }
+        
 
         if (ticket.status !== OtPlanEmployeeStatus.SUBMITTED) {
             throw new BadRequestException(OT_ERRORS.TICKET_NOT_SUBMITTED);
@@ -420,7 +543,7 @@ export class OtService {
             // Nếu là nghỉ bù, cộng vào LeaveBalance
             if (ticket.mode === OtMode.COMPENSATORY && ticket.compensatoryMinutes > 0) {
                 const currentYear = dayjs().year();
-                const compensatoryHours = ticket.compensatoryMinutes / 60;
+                const compensatoryHours = ticket.compensatoryMinutes / 60 / WORKING_HOURS_PER_DAY;
 
                 await queryRunner.query(
                     `INSERT INTO leave_balances (userId, year, compensatoryBalance)
@@ -478,14 +601,16 @@ export class OtService {
 
         if (!ticket) throw new NotFoundException(OT_ERRORS.TICKET_NOT_FOUND);
 
-        const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
-        if(isITDepartment){
-            if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
-                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
-            }
-        } else {
-            if(ticket.otPlan.creatorId !== approver.id){
-                throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        if(approver.role !== UserRole.ADMIN){
+            const isITDepartment = ticket.otPlan.creator.departmentName === IT_DEPARTMENT;
+            if(isITDepartment){
+                if(approver.role !== UserRole.DEPARTMENT_LEAD || approver.departmentName !== IT_DEPARTMENT){
+                    throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+                }
+            } else {
+                if(ticket.otPlan.creatorId !== approver.id){
+                    throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+                }
             }
         }
 
@@ -696,7 +821,15 @@ export class OtService {
 
         if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
 
-        if (isLeadIT && otPlan.creator?.departmentName !== IT_DEPARTMENT) {
+        const isPlanFromIT = otPlan.creator?.departmentName === IT_DEPARTMENT;
+
+        // Admin không được duyệt plan của phòng IT (phành Lead IT)
+        if (isAdmin && isPlanFromIT) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
+
+        // Lead IT chỉ duyệt plan của phòng IT
+        if (isLeadIT && !isPlanFromIT) {
             throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
         }
 
@@ -770,10 +903,16 @@ export class OtService {
 
         if (!otPlan) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
 
-        if (isLeadIT && otPlan.creator?.departmentName !== IT_DEPARTMENT) {
+        const isPlanFromIT = otPlan.creator?.departmentName === IT_DEPARTMENT;
+
+        // Admin không được từ chối plan của phòng IT
+        if (isAdmin && isPlanFromIT) {
             throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
         }
 
+        if (isLeadIT && !isPlanFromIT) {
+            throw new ForbiddenException(OT_ERRORS.NOT_YOUR_DEPARTMENT_TICKET);
+        }
 
         // atomic update Bảng Cha
         const updateResult = await this.otPlanRepo.update(
@@ -1098,16 +1237,18 @@ export class OtService {
 
         const isAdmin = user.role === UserRole.ADMIN;
         const isLeadIT = user.role === UserRole.DEPARTMENT_LEAD && user.departmentName === IT_DEPARTMENT;
-        const isPc = user.role === UserRole.PROJECT_COORDINATOR ;
+        const isPc = user.role === UserRole.PROJECT_COORDINATOR;
         const isLead = user.role === UserRole.DEPARTMENT_LEAD;
+        const isPlanFromIT = otPlan.creator.departmentName === IT_DEPARTMENT;
 
-        if(isAdmin){
-            
-        } else if (isLeadIT || isPc){
-            if (otPlan.creator.departmentName !== IT_DEPARTMENT) {
+        if (isAdmin) {
+            // Admin không được xem plan của phòng IT
+            if (isPlanFromIT) throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
+        } else if (isLeadIT || isPc) {
+            if (!isPlanFromIT) {
                 throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
             }
-        } else if (isLead){
+        } else if (isLead) {
             if (otPlan.creatorId !== user.id) {
                 throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
             }
@@ -1116,35 +1257,35 @@ export class OtService {
         }
 
         return {
-            data: {
-                id: otPlan.id,
-                startTime: otPlan.startTime,
-                endTime: otPlan.endTime,
-                reason: otPlan.reason,
-                status: otPlan.status,
-                rejectedReason: otPlan.rejectedReason,
-                approvedAt: otPlan.approvedAt,
-                employees: otPlan.employees.map((emp) => ({
-                    ticketId: emp.id,
-                    employeeId: emp.employeeId,
-                    employeeName: emp.employee.name,
-                    employeeDepartment: emp.employee.departmentName,
-                    status: emp.status,
-                    checkInTime: emp.checkInTime,
-                    checkOutTime: emp.checkOutTime,
-                    workContent: emp.workContent,
-                    actualMinutes: emp.actualMinutes,
-                    mode: emp.mode,
-                    rejectedReason: emp.rejectedReason,
-                })),
-            }
+            id: otPlan.id,
+            creatorId: otPlan.creatorId,
+            creatorName: otPlan.creator?.name || null,
+            startTime: otPlan.startTime,
+            endTime: otPlan.endTime,
+            reason: otPlan.reason,
+            status: otPlan.status,
+            rejectedReason: otPlan.rejectedReason,
+            approvedAt: otPlan.approvedAt,
+            employees: otPlan.employees.map((emp) => ({
+                ticketId: emp.id,
+                employeeId: emp.employeeId,
+                employeeName: emp.employee.name,
+                employeeDepartment: emp.employee.departmentName,
+                status: emp.status,
+                checkInTime: emp.checkInTime,
+                checkOutTime: emp.checkOutTime,
+                workContent: emp.workContent,
+                actualMinutes: emp.actualMinutes,
+                mode: emp.mode,
+                rejectedReason: emp.rejectedReason,
+            })),
         };
     }
 
     async getOtTicketDetail(user: User, otPlanEmployeeId: number){
         const otPlanEmployee = await this.otPlanEmployeeRepo.findOne({
-            where: {id: otPlanEmployeeId, employeeId: user.id},
-            relations: ['otPlan'],
+            where: {id: otPlanEmployeeId},
+            relations: ['otPlan', 'employee'],
             select: {
                 otPlan: {
                     id: true,
@@ -1153,7 +1294,13 @@ export class OtService {
                     reason: true,
                     status: true,
                 },
+                employee: {
+                    id: true,
+                    role: true,
+                    departmentName: true,
+                },
                 id: true,
+                employeeId: true,
                 status: true,
                 checkInTime: true,
                 checkOutTime: true,
@@ -1165,6 +1312,16 @@ export class OtService {
         });
 
         if(!otPlanEmployee) throw new NotFoundException(OT_ERRORS.OT_PLAN_NOT_FOUND);
+
+        const {role, id, departmentName} = user;
+        const target = otPlanEmployee.employee;
+
+        const isAllowed = 
+            id === target.id ||
+            ([UserRole.DEPARTMENT_LEAD, UserRole.HR].includes(role) && departmentName === otPlanEmployee.employee.departmentName) ||
+            (role === UserRole.ADMIN && [UserRole.DEPARTMENT_LEAD, UserRole.HR].includes(target.role))
+
+        if(!isAllowed) throw new ForbiddenException(OT_ERRORS.NOT_YOUR_TICKET);
 
         return {
             message: 'Lấy chi tiết đơn OT thành công',

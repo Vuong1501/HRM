@@ -4,6 +4,7 @@ import {
   Body,
   UseGuards,
   Req,
+  Query,
   UnauthorizedException,
   Param,
   ParseIntPipe,
@@ -12,7 +13,7 @@ import {
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import type { Request } from 'express';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PoliciesGuard } from 'src/common/guards/policies.guard';
 import { CheckPolicies } from 'src/common/decorators/policy.decorator';
 import { Action } from 'src/common/enums/action.enum';
@@ -40,6 +41,22 @@ export class UsersController {
       throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
     }
     return this.usersService.getMe(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies((ability) => ability.can(Action.Read, User))
+  @Get('/employees')
+  @ApiOperation({ summary: 'Lấy danh sách nhân viên để chọn (dành cho tạo OT)' })
+  @ApiQuery({ name: 'search', required: false, description: 'Tìm kiếm theo tên nhân viên' })
+  @ApiBearerAuth()
+  getEmployeesList(
+    @Req() req: RequestWithUser,
+    @Query('search') search?: string,
+  ) {
+    if (!req.user) {
+      throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
+    }
+    return this.usersService.getEmployeesList(req.user.userId, search);
   }
 
   @UseGuards(JwtAuthGuard, PoliciesGuard)
