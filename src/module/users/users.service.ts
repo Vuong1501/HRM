@@ -11,6 +11,7 @@ import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import dayjs from 'dayjs';
 import { LeaveAccrualService } from '../leave/leave-accrual.service';
 import { USER_ERRORS } from './users.error';
+import { UserStatus } from 'src/common/enums/user-status.enum';
 
 @Injectable()
 export class UsersService {
@@ -154,5 +155,15 @@ export class UsersService {
     }
 
     return { message: 'Cập nhật nhân viên thành công' };
+  }
+
+  async inactiveUser(userId: number) {
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException(USER_ERRORS.USER_NOT_FOUND);
+
+    user.status = UserStatus.DISABLED;
+    await this.userRepository.save(user);
+
+    return { message: 'Đã vô hiệu hóa nhân viên thành công' };
   }
 }

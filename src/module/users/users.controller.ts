@@ -62,7 +62,7 @@ export class UsersController {
     return this.usersService.getEmployeesList(req.user.userId, search);
   }
 
-  // [HR/Admin] Lấy danh sách toàn bộ nhân viên công ty
+  // [HR] Lấy danh sách toàn bộ nhân viên công ty
   @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies((ability) => ability.can(Action.Manage, User))
   @Get('/company-employees')
@@ -110,5 +110,12 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(Number(id), dto);
+  }
+
+  @Patch(':id/inactive')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies((ability) => ability.can(Action.Update, User))
+  inactiveUser(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.inactiveUser(id);
   }
 }
