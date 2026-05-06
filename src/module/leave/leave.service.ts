@@ -893,6 +893,66 @@ export class LeaveService {
     fileStream.pipe(res); 
   }
 
+  // api thống kê nghỉ của bản thân
+  async getMySummary(userId: number, year: number){
+    const balance = await this.getOrCreateBalance(userId, year);
+
+    const approvedLeaves = await this.leaveRequestRepo.find({
+      where: { 
+        userId,
+        leaveType: LeaveType.PAID,
+        status: LeaveRequestStatus.APPROVED
+      },
+    });
+
+    // Tính monthlyUsed - loop từng đơn, từng ngày, group theo tháng
+    const monthlyUsed: Record<string, number> = {
+        T1: 0, T2: 0, T3: 0, T4: 0,
+        T5: 0, T6: 0, T7: 0, T8: 0,
+        T9: 0, T10: 0, T11: 0, T12: 0,
+    };
+
+    for(const leave of approvedLeaves){
+      const start = dayjs(leave.startDate).startOf('day');
+      const end = dayjs(leave.endDate).startOf('day');
+      let current = start;
+
+      while(current.isBefore(end) || current.isSame(end)){
+        
+        // chỉ tính năm hiện tại
+        if(current.year() === year){
+          const isWeekendOrHoliday = await this.holidayService.isWeekendOrHoliday(current)
+          if(!isWeekendOrHoliday){
+            const monthKey = `T${current.month() + 1}`;
+
+            // xử lý trường hợp đơn nghỉ nửa buổi của startDate và nửa buổi của endDate
+            const isFirstDay = current.isSame(start, 'day');
+            const isLastDay = current.isSame(end, 'day');
+
+            let dayValue = 1;
+            if(isFirstDay && leave.startHalfDayType === HalfDayType.AFTERNOON) dayValue -= 0.5;
+            if(isLastDay && leave.endHalfDayType === HalfDayType.MORNING) dayValue -= 0.5;
+
+            monthlyUsed[monthKey] += dayValue;
+          }
+        }
+        current = current.add(1, 'day');
+      }
+    }
+    // lấy ra tổng ngày phép và phép đã sử dụng
+    const annualLeaveTotal = Number(balance.annualLeaveTotal);
+    const annualLeaveUsed = Number(balance.annualLeaveUsed);
+
+    return {
+      annualLeaveTotal,
+      annualLeaveUsed,
+      annualLeaveRemaining: annualLeaveTotal - annualLeaveUsed,
+      compensatoryBalance: Number(balance.compensatoryBalance),
+      unpaidLeaveUsed: Number(balance.unpaidLeaveUsed),
+      monthlyUsed,
+    }
+  }
+
   // Tính số ngày nghỉ (startDate → endDate, inclusive)
   private async calculateLeaveDays(
     startDate: Date, 

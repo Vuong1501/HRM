@@ -30,6 +30,7 @@ import type  { Response } from 'express';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { leaveUploadOptions, MAX_FILES  } from 'src/common/multer/leave-upload.config';
+import dayjs from 'dayjs';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -162,5 +163,19 @@ export class LeaveController {
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     return this.leaveService.updateLeaveRequest(req.userEntity, id, dto, files);
+  }
+
+  // api thống kê nghỉ của bản thân
+  @Get('my-summary')
+  @CheckPolicies((ability) =>
+    ability.can(Action.Read, LeaveRequest))
+  getMySummary(
+    @Req() req: RequestWithUser,
+    @Query('year') year?: string,
+  ) {
+    return this.leaveService.getMySummary(
+      req.userEntity.id,
+      Number(year) || dayjs().year()
+    );
   }
 }
