@@ -38,7 +38,6 @@ export class HolidayService {
             endDate: dto.endDate,
             duration,
             year,
-            isRecurring: dto.isRecurring,
             createdBy: userId,
         })
 
@@ -96,7 +95,6 @@ export class HolidayService {
         await this.holidayRepository.remove(holiday);
         return { message: 'Xóa ngày nghỉ thành công' };
     }
-
 
     async isHoliday(date: Dayjs): Promise<boolean> {
         const dateStr = date.format('YYYY-MM-DD');

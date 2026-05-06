@@ -20,7 +20,6 @@ import { Holiday } from './entities/holiday.entity';
 import type { RequestWithUser } from 'src/common/interfaces/request-with-user.interface';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
-import { GenerateRecurringDto } from './dto/generate-recurring.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('holidays')
@@ -61,6 +60,5 @@ export class HolidayController {
     delete(@Param('id') id: string) {
         return this.holidayService.deleteHoliday(Number(id));
     }
-
 
 }

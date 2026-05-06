@@ -28,9 +28,6 @@ export class Holiday {
     @Column({ type: 'int' })
     year: number;
 
-    @Column({ type: 'boolean', default: false })
-    isRecurring: boolean; // true = lặp lại hàng năm (ngày dương cố định)
-
     @Column({ nullable: true })
     createdBy: number; // id của người tạo, không cần rela với user
 

@@ -11,7 +11,4 @@ export class CreateHolidayDto {
     @IsDateString()
     endDate: string;
 
-    @IsBoolean()
-    @IsOptional()
-    isRecurring?: boolean;
 }

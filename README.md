@@ -143,3 +143,10 @@ tức là ở controller sẽ tạo lại ability, nó sẽ phải truyền vào
 triển khai luồng invite như nào
 triển khai oauth như nào
 triển khai .... như nào
+
+lệnh migration
+ npm run migration:generate -- src/migrations/TenMigration
+ => sinh ra câu lệnh sql ở folder migration => kiểm tra => ok thì chạy
+ npm run migration:run
+
+ còn migration:create thì tạo thư mục trống, tự viết câu lệnh sql
