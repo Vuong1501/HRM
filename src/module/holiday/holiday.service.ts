@@ -84,6 +84,12 @@ export class HolidayService {
         
     }
 
+    async getDetailHoliday(holidayId: number){
+        const holiday = await this.holidayRepository.findOneBy({id: holidayId});
+        if(!holiday) throw new NotFoundException(HOLIDAY_ERRORS.HOLIDAY_NOT_FOUND);
+        return holiday;
+    }
+
 
     async isHoliday(date: Dayjs): Promise<boolean> {
         const dateStr = date.format('YYYY-MM-DD');
