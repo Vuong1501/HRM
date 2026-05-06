@@ -12,7 +12,7 @@ import { CaslModule } from './module/casl/casl.module';
 import { LeaveModule } from './module/leave/leave.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OtModule } from './module/ot/ot.module';
-import { CalendarModule } from './module/calendar/calendar.module';
+import { HolidayModule } from './module/holiday/holiday.module';
 
 @Module({
   imports: [
@@ -42,7 +42,7 @@ import { CalendarModule } from './module/calendar/calendar.module';
     CaslModule,
     LeaveModule,
     OtModule,
-    CalendarModule,
+    HolidayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

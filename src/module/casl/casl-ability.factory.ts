@@ -10,11 +10,12 @@ import { User } from '../users/entities/user.entity';
 import { LeaveRequest } from '../leave/entities/leave-request.entity';
 import { OtPlan } from '../ot/entities/ot-plan.entity';
 import { OtPlanEmployee } from '../ot/entities/ot-plan-employee.entity';
+import { Holiday } from '../holiday/entities/holiday.entity';
 import { Action } from 'src/common/enums/action.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { EMPLOYEE_LIKE_ROLES } from 'src/common/constants/role-groups.constant';
 
-type Subjects = InferSubjects<typeof User | typeof LeaveRequest | typeof OtPlan | typeof OtPlanEmployee> | 'all';
+type Subjects = InferSubjects<typeof User | typeof LeaveRequest | typeof OtPlan | typeof OtPlanEmployee | typeof Holiday> | 'all';
 
 export type AppAbility = MongoAbility<[Action, Subjects]>;
 
@@ -48,6 +49,8 @@ export class CaslAbilityFactory {
       can(Action.CheckIn, OtPlanEmployee);
       can(Action.CheckOut, OtPlanEmployee);
       can(Action.Submit, OtPlanEmployee);
+
+      can(Action.Manage, Holiday);
 
     } else if (user.role === UserRole.DEPARTMENT_LEAD) {
       can(Action.Read, User);

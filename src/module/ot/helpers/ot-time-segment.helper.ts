@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
-import { CalendarService } from '../../calendar/calendar.service';
+import { HolidayService } from '../../holiday/holiday.service';
 import { OtSegmentType } from 'src/common/enums/ot/ot-segment-type.enum';
 import { OT_TICKET_CONSTANTS } from '../ot-ticket.constants';
 
@@ -9,7 +9,7 @@ dayjs.extend(isBetween);
 
 @Injectable()
 export class OtTimeSegmentHelper {
-  constructor(private readonly calendarService: CalendarService) {}
+  constructor(private readonly holidayService: HolidayService) {}
 
   async splitIntoSegments(
     checkIn: Date,
@@ -38,7 +38,7 @@ export class OtTimeSegmentHelper {
       const currentEnd = this.getNextBoundary(currentStart, end);
       const minutes = currentEnd.diff(currentStart, 'minute');
 
-      const isWeekendOrHoliday = await this.calendarService.isWeekendOrHoliday(
+      const isWeekendOrHoliday = await this.holidayService.isWeekendOrHoliday(
         currentStart,
       );
       

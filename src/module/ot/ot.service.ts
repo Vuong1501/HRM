@@ -11,7 +11,7 @@ import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { OT_ERRORS } from './ot.errors';
 import { MailService } from '../mail/mail.service';
-import { CalendarService } from '../calendar/calendar.service';
+import { HolidayService } from '../holiday/holiday.service';
 import { SubmitOtTicketDto } from './dto/submit-ot-ticket.dto';
 import { OtTimeSegmentHelper } from './helpers/ot-time-segment.helper';
 import { OtCompensatoryHelper } from './helpers/ot-compensatory.helper';
@@ -56,7 +56,7 @@ export class OtService {
 
         private dataSource: DataSource,
         private mailService: MailService,
-        private calendarService: CalendarService,
+        private holidayService: HolidayService,
         private readonly otTimeSegmentHelper: OtTimeSegmentHelper,
         private readonly otCompensatoryHelper: OtCompensatoryHelper,
         private readonly otPlanQueryBuilder: OtPlanQueryBuilder,
@@ -660,7 +660,7 @@ export class OtService {
         }
 
         // check ngày thường hay cuối tuần hoặc lễ
-        const isWeekendOrHoliday = await this.calendarService.isWeekendOrHoliday(startTime);
+        const isWeekendOrHoliday = await this.holidayService.isWeekendOrHoliday(startTime);
         const durationHours = endTime.diff(startTime, 'hour', true);
 
         if(!isWeekendOrHoliday) {
@@ -990,7 +990,7 @@ export class OtService {
 
         // Check ngày thường/cuối tuần
         if (dto.startTime || dto.endTime) {
-            const isWeekendOrHoliday = await this.calendarService.isWeekendOrHoliday(newStartTime);
+            const isWeekendOrHoliday = await this.holidayService.isWeekendOrHoliday(newStartTime);
             const durationHours = newEndTime.diff(newStartTime, 'hour', true);
 
             if (!isWeekendOrHoliday) {
