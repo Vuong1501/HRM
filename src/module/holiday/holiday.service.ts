@@ -90,6 +90,13 @@ export class HolidayService {
         return holiday;
     }
 
+    async deleteHoliday(holidayId: number){
+        const holiday = await this.holidayRepository.findOneBy({id: holidayId});
+        if(!holiday) throw new NotFoundException(HOLIDAY_ERRORS.HOLIDAY_NOT_FOUND);
+        await this.holidayRepository.remove(holiday);
+        return { message: 'Xóa ngày nghỉ thành công' };
+    }
+
 
     async isHoliday(date: Dayjs): Promise<boolean> {
         const dateStr = date.format('YYYY-MM-DD');

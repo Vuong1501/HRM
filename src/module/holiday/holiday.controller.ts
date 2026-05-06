@@ -56,11 +56,11 @@ export class HolidayController {
         return this.holidayService.getDetailHoliday(Number(id));
     }
 
-    // @Delete(':id')
-    // @CheckPolicies((ability) => ability.can(Action.Delete, Holiday))
-    // delete(@Param('id') id: string) {
-    //     return this.holidayService.deleteHoliday(Number(id));
-    // }
+    @Delete(':id')
+    @CheckPolicies((ability) => ability.can(Action.Delete, Holiday))
+    delete(@Param('id') id: string) {
+        return this.holidayService.deleteHoliday(Number(id));
+    }
 
 
 }
