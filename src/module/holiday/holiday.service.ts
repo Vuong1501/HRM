@@ -37,11 +37,23 @@ export class HolidayService {
             endDate: dto.endDate,
             duration,
             year,
+            isRecurring: dto.isRecurring,
             createdBy: userId,
         })
 
         await this.holidayRepository.save(holiday);
         return { message: 'Thêm ngày nghỉ thành công', holiday };
+    }
+
+    async getListHoliday(year: number) {
+        const holidays = await this.holidayRepository.find({
+            where: { year },
+            order: { startDate: 'ASC' },
+        })
+         const totalDays = holidays.reduce((sum, h) => sum + h.duration, 0);
+
+        return {holidays, totalDays };
+        
     }
 
 

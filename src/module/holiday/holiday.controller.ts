@@ -36,4 +36,12 @@ export class HolidayController {
         return this.holidayService.createHoliday(req.userEntity.id, dto);
     }
 
+    @Get()
+    @CheckPolicies((ability) => ability.can(Action.Read, Holiday))
+    getList(
+        @Query('year') year?: string
+    ) {
+        return this.holidayService.getListHoliday(Number(year) || dayjs().year());
+    }
+
 }
