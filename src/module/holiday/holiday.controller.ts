@@ -44,4 +44,17 @@ export class HolidayController {
         return this.holidayService.getListHoliday(Number(year) || dayjs().year());
     }
 
+    @Patch(':id')
+    @CheckPolicies((ability) => ability.can(Action.Update, Holiday))
+    update(@Param('id') id: string, @Body() dto: UpdateHolidayDto) {
+        return this.holidayService.updateHoliday(Number(id), dto);
+    }
+
+    // @Delete(':id')
+    // @CheckPolicies((ability) => ability.can(Action.Delete, Holiday))
+    // delete(@Param('id') id: string) {
+    //     return this.holidayService.deleteHoliday(Number(id));
+    // }
+
+
 }

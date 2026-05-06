@@ -48,11 +48,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
     };
     if (status >= 500) {
-      // Lỗi Server: Log đỏ + Stack Trace để sửa code
-      this.logger.error(
-        `[${request.method}] ${request.url} - Error: ${message}`,
-        exception instanceof Error ? exception.stack : '',
-      );
+      // Lỗi Server: In lỗi thông qua Logger của NestJS để đồng bộ format
+      this.logger.error(`[${request.method}] ${request.url} - LỖI HỆ THỐNG (500)`);
+      this.logger.error(exception); // Trực tiếp truyền exception vào logger để lấy full stack trace
     } else {
       // Lỗi Client (4xx): Log cảnh báo thôi, không cần stack trace
       this.logger.warn(

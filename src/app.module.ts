@@ -30,7 +30,7 @@ import { HolidayModule } from './module/holiday/holiday.module';
         synchronize: false,
         autoLoadEntities: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        logging: configService.get<string>('NODE_ENV') === 'production' ? ['error'] : [ 'error'],
+        logging: configService.get<string>('NODE_ENV') === 'production' ? ['error'] : ['query', 'error'],
       }),
     }),
     ScheduleModule.forRoot(),

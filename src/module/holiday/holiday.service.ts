@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import dayjs, { Dayjs } from 'dayjs';
 import { HOLIDAY_ERRORS } from './holiday.errors';
+import { UpdateHolidayDto } from './dto/update-holiday.dto';
 
 @Injectable()
 export class HolidayService {
@@ -56,6 +57,33 @@ export class HolidayService {
         
     }
 
+    async updateHoliday(holidayId: number, dto: UpdateHolidayDto){
+        const holiday = await this.holidayRepository.findOneBy({id: holidayId});
+        if(!holiday) throw new NotFoundException(HOLIDAY_ERRORS.HOLIDAY_NOT_FOUND);
+
+        if(dto.startDate || dto.endDate){
+            const startDate = dayjs(dto.startDate ?? holiday.startDate);
+            const endDate = dayjs(dto.endDate ?? holiday.endDate);
+
+            if (startDate.isAfter(endDate)) {
+                throw new BadRequestException(HOLIDAY_ERRORS.INVALID_DATE_RANGE);
+            }
+            holiday.duration = endDate.diff(startDate, 'day') + 1;
+            holiday.year = startDate.year();
+
+            await this.checkOverlap(
+                startDate.format('YYYY-MM-DD'),
+                endDate.format('YYYY-MM-DD'),
+                holidayId,
+            );
+        }
+        Object.assign(holiday, dto); // ghi đè các trường trong dto lên holiday, còn lại giữ nguyên
+        await this.holidayRepository.save(holiday);
+
+        return { message: 'Cập nhật ngày nghỉ thành công', holiday };
+        
+    }
+
 
     async isHoliday(date: Dayjs): Promise<boolean> {
         const dateStr = date.format('YYYY-MM-DD');
@@ -83,7 +111,7 @@ export class HolidayService {
                 endDate
             });
         if(excludeId){
-            qb.andWhere('h.id !== :id', {id: excludeId});
+            qb.andWhere('h.id != :id', {id: excludeId});
         };
 
         const overlap = await qb.getOne();
