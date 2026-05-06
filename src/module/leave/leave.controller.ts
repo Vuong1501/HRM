@@ -178,4 +178,20 @@ export class LeaveController {
       Number(year) || dayjs().year()
     );
   }
+
+  // api thống kê nghỉ của tháng/năm
+  @Get('my-calendar')
+  @CheckPolicies((ability) => ability.can(Action.Read, LeaveRequest))
+  getMyCalendar(
+    @Req() req: RequestWithUser,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+      const now = dayjs();
+      return this.leaveService.getMyCalendar(
+          req.userEntity.id,
+          Number(month) || now.month() + 1,
+          Number(year) || now.year(),
+      );
+  }
 }

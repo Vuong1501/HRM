@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, In } from 'typeorm';
+import { Repository, Not, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { Response } from 'express';
 import { LeaveRequest } from './entities/leave-request.entity';
 import { LeaveBalance } from './entities/leave-balance.entity';
@@ -951,6 +951,73 @@ export class LeaveService {
       unpaidLeaveUsed: Number(balance.unpaidLeaveUsed),
       monthlyUsed,
     }
+  }
+
+  // api thống kê nghỉ của tháng/năm
+  async getMyCalendar(
+    userId: number,
+    month: number,
+    year: number,
+  ) {
+    const startOfMonth = dayjs(`${year}-${month}-01`).startOf('month');
+    const endOfMonth = startOfMonth.endOf('month');
+
+    const approvedLeaves = await this.leaveRequestRepo.find({
+      where: {
+        userId,
+        status: LeaveRequestStatus.APPROVED,
+        startDate: LessThanOrEqual(endOfMonth.toDate()),
+        endDate: MoreThanOrEqual(startOfMonth.toDate()),
+      },
+    });
+
+    const days: {
+      date: string;
+      leaveType: string;
+      startHalf: HalfDayType;
+      endHalf: HalfDayType;
+    }[] = [];
+
+    let totalDays = 0;
+
+    for (const leave of approvedLeaves) {
+        const leaveStart = dayjs(leave.startDate).startOf('day');
+        const leaveEnd = dayjs(leave.endDate).startOf('day');
+
+        let current = leaveStart;
+
+        while (current.isBefore(leaveEnd) || current.isSame(leaveEnd, 'day')) {
+            // Chỉ lấy ngày nằm trong tháng được query
+            if (current.month() + 1 === month && current.year() === year) {
+                const isWeekendOrHoliday = await this.holidayService.isWeekendOrHoliday(current);
+
+                if (!isWeekendOrHoliday) {
+                    const isFirstDay = current.isSame(leaveStart, 'day');
+                    const isLastDay = current.isSame(leaveEnd, 'day');
+
+                    let dayValue = 1;
+                    if (isFirstDay && leave.startHalfDayType === HalfDayType.AFTERNOON) dayValue -= 0.5;
+                    if (isLastDay && leave.endHalfDayType === HalfDayType.MORNING) dayValue -= 0.5;
+
+                    totalDays += dayValue;
+
+                    days.push({
+                        date: current.format('YYYY-MM-DD'),
+                        leaveType: leave.leaveType,
+                        startHalf: isFirstDay ? leave.startHalfDayType : HalfDayType.MORNING,
+                        endHalf: isLastDay ? leave.endHalfDayType : HalfDayType.AFTERNOON,
+                    });
+                }
+            }
+            current = current.add(1, 'day');
+        }
+    }
+    return {
+        month,
+        year,
+        totalDays,
+        days,
+    };
   }
 
   // Tính số ngày nghỉ (startDate → endDate, inclusive)
