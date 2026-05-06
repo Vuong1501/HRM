@@ -21,10 +21,13 @@ import { RawInviteRow } from './dto/raw-invite-row';
 import {
   normalizeDate,
   normalizeRole,
+  normalizeDepartment,
+  normalizeSex,
   HEADER_MAP,
   normalizeRowKeys,
   getValueByAliases,
 } from 'src/common/helper/excel-normalizer';
+import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 
 
 @Injectable()
@@ -70,6 +73,10 @@ export class HrService {
         sex: userDto.sex,
         phoneNumber: userDto.phoneNumber,
         startDate: dayjs(userDto.startDate).toDate(),
+        employmentType: userDto.employmentType,
+        officialDate: userDto.employmentType === EmploymentType.OFFICIAL 
+        ? dayjs(userDto.startDate).toDate() 
+        : null,
       });
       const user = await queryRunner.manager.save(entity);
 
@@ -335,11 +342,11 @@ export class HrService {
           email: raw.email,
           name: raw.name,
           dateOfBirth: normalizeDate(raw.dob),
-          departmentName: raw.department,
+          departmentName: normalizeDepartment(raw.department),
           role: roleInfo.role,
           employmentType: roleInfo.employmentType,
           address: raw.address,
-          sex: raw.sex?.toLowerCase(),
+          sex: normalizeSex(raw.sex),
           phoneNumber: phone ? (phone.startsWith('0') ? phone : `0${phone}`) : '',
           startDate: normalizeDate(raw.startDate),
         });

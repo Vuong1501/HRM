@@ -5,9 +5,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { MailModule } from '../mail/mail.module';
 import { OutboxMail } from '../mail/entities/outbox-mail.entity';
+import { CaslModule } from '../casl/casl.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, OutboxMail]), MailModule],
+  imports: [TypeOrmModule.forFeature([User, OutboxMail]), MailModule, CaslModule],
   controllers: [HrController],
   providers: [HrService],
 })

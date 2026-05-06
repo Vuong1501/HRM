@@ -1,16 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { APP_ERRORS } from 'src/common/errors/app.errors';
 // import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
 import { UserResponseDto } from './dto/user-response.dto';
+import { EmployeeListQueryDto } from './dto/employee-list-query.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
+import dayjs from 'dayjs';
+import { LeaveAccrualService } from '../leave/leave-accrual.service';
+import { USER_ERRORS } from './users.error';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private readonly leaveAccrualService: LeaveAccrualService,
   ) {}
 
   toResponse(user: User): UserResponseDto {
@@ -73,5 +80,79 @@ export class UsersService {
     }
 
     return await query.getMany();
+  }
+
+  // Lấy danh sách nhân viên toàn công ty (HR/Admin)
+  async getCompanyEmployees(query: EmployeeListQueryDto) {
+    const { page = 1, limit = 10, search, departmentName } = query;
+
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .select([
+        'user.id',
+        'user.name',
+        'user.email',
+        'user.role',
+        'user.status',
+        'user.departmentName',
+        'user.employmentType',
+        'user.phoneNumber',
+        'user.startDate',
+      ]);
+
+    if (search) {
+      qb.andWhere(
+        '(user.name LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (departmentName) {
+      qb.andWhere('user.departmentName = :departmentName', { departmentName });
+    }
+
+    qb.orderBy('user.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      lastPage: Math.ceil(total / limit),
+    };
+  }
+
+  // HR cập nhật thông tin user
+  async updateUser(userId: number, dto: UpdateUserDto){
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException(USER_ERRORS.USER_NOT_FOUND);
+
+    // Khi chuyển sang OFFICIAL thì bắt buộc có officialDate
+    const isUpgradingToOfficial = 
+        dto.employmentType === EmploymentType.OFFICIAL && 
+        user.employmentType !== EmploymentType.OFFICIAL;
+
+    if (isUpgradingToOfficial && !dto.officialDate && !user.officialDate) {
+        throw new BadRequestException(USER_ERRORS.OFFICIAL_DATE_REQUIRED);
+    }
+
+    Object.assign(user, {
+        ...dto,
+        startDate: dto.startDate ? dayjs(dto.startDate).toDate() : user.startDate,
+        officialDate: dto.officialDate ? dayjs(dto.officialDate).toDate() : user.officialDate,
+        dateOfBirth: dto.dateOfBirth ? dayjs(dto.dateOfBirth).toDate() : user.dateOfBirth,
+    });
+
+    await this.userRepository.save(user);
+    // Backfill phép khi lên chính thức
+    if (isUpgradingToOfficial) {
+        await this.leaveAccrualService.backfillLeaveForUser(user);
+    }
+
+    return { message: 'Cập nhật nhân viên thành công' };
   }
 }

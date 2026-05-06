@@ -26,18 +26,19 @@ import {
 } from '@nestjs/swagger';
 import { HR_ERRORS } from './hr.errors';
 import { InviteResultDto } from './dto/invite-result.dto';
+import { PoliciesGuard } from 'src/common/guards/policies.guard';
+import { Action } from 'src/common/enums/action.enum';
+import { CheckPolicies } from 'src/common/decorators/policy.decorator';
+import { User } from '../users/entities/user.entity';
 
 @ApiTags('hr')
 @Controller('hr')
+@UseGuards(JwtAuthGuard, PoliciesGuard)
 export class HrController {
   constructor(private readonly hrService: HrService) {}
 
-  // @UseGuards(JwtAuthGuard, RolesGuard)
-  // @Roles('hr')
   @Post('invite')
-  @ApiOperation({ summary: 'HR mời nhân viên mới' })
-  @ApiResponse({ status: 201, description: 'Mời thành công' })
-  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
+  @CheckPolicies((ability) => ability.can(Action.Create, User))
   @ApiBearerAuth()
   invite(@Body() userDto: InviteDto) {
     return this.hrService.invite(userDto);
@@ -52,36 +53,36 @@ export class HrController {
     return this.hrService.resendInviteEmail(outboxId);
   }
 
-  @Post('invite/upload')
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Mời hàng loạt user qua file Excel' })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 201,
-    description: 'Upload file và preview danh sách hợp lệ',
-    type: InviteResultDto,
-  })
-  @ApiBearerAuth()
-  async uploadBulkInvite(@UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException(HR_ERRORS.FILE_REQUIRED);
-    }
-    return this.hrService.processBulkInviteFile(file.buffer);
-  }
+  // @Post('invite/upload')
+  // @UseInterceptors(FileInterceptor('file'))
+  // @ApiOperation({ summary: 'Mời hàng loạt user qua file Excel' })
+  // @ApiConsumes('multipart/form-data')
+  // @ApiBody({
+  //   schema: {
+  //     type: 'object',
+  //     properties: {
+  //       file: {
+  //         type: 'string',
+  //         format: 'binary',
+  //       },
+  //     },
+  //   },
+  // })
+  // @ApiResponse({
+  //   status: 201,
+  //   description: 'Upload file và preview danh sách hợp lệ',
+  //   type: InviteResultDto,
+  // })
+  // @ApiBearerAuth()
+  // async uploadBulkInvite(@UploadedFile() file: Express.Multer.File) {
+  //   if (!file) {
+  //     throw new BadRequestException(HR_ERRORS.FILE_REQUIRED);
+  //   }
+  //   return this.hrService.processBulkInviteFile(file.buffer);
+  // }
 
-  @Post('invite/confirm')
-  async confirmBulkInvite(@Body() dto: BulkInviteDto) {
-    return this.hrService.bulkInvite(dto);
-  }
+  // @Post('invite/confirm')
+  // async confirmBulkInvite(@Body() dto: BulkInviteDto) {
+  //   return this.hrService.bulkInvite(dto);
+  // }
 }

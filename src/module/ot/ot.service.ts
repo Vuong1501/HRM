@@ -9,6 +9,7 @@ import { OtPlanStatus } from 'src/common/enums/ot/ot-status.enum';
 import { OtPlanEmployeeStatus } from 'src/common/enums/ot/ot-employee-status.enum';
 import { LeaveRequestStatus } from 'src/common/enums/leave-request-status.enum';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { Department } from 'src/common/enums/department.enum';
 import { OT_ERRORS } from './ot.errors';
 import { MailService } from '../mail/mail.service';
 import { HolidayService } from '../holiday/holiday.service';
@@ -28,7 +29,7 @@ import { OtTicketQueryBuilder } from './ot-ticket.query-builder';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 
-const IT_DEPARTMENT = 'IT';
+const IT_DEPARTMENT = Department.IT;
 const OT_WEEKDAY_START_HOUR = 17;
 const OT_WEEKDAY_START_MINUTE = 30;
 const OT_WEEKDAY_MAX_HOURS = 4;

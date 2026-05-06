@@ -1,5 +1,7 @@
 import { UserRole } from '../enums/user-role.enum';
 import { EmploymentType } from '../enums/user-employeeType.enum';
+import { SexEnum } from '../enums/user-sex.enum';
+import { Department } from '../enums/department.enum';
 import { RawInviteRow } from 'src/module/hr/dto/raw-invite-row';
 import dayjs from 'dayjs';
 
@@ -56,21 +58,63 @@ export function getValueByAliases(
   return undefined;
 }
 
-export function normalizeRole(raw: string): {
-  role: UserRole;
-  employmentType: EmploymentType;
+export function normalizeRole(raw: string | undefined): {
+  role: UserRole | undefined;
+  employmentType: EmploymentType | undefined;
 } {
-  const v = raw.toLowerCase();
+  if (!raw) {
+    return {
+      role: undefined,
+      employmentType: undefined,
+    };
+  }
+  const v = raw.toLowerCase().trim();
 
-  let employmentType = EmploymentType.OFFICIAL;
+  let role: UserRole | undefined = undefined;
+  let employmentType: EmploymentType | undefined = undefined;
 
-  if (v.includes('intern')) employmentType = EmploymentType.INTERN;
-  else if (v.includes('thử')) employmentType = EmploymentType.PROBATION;
+  // Xác định Role
+  if (v.includes('admin')) role = UserRole.ADMIN;
+  else if (v.includes('hr') || v.includes('nhân sự')) role = UserRole.HR;
+  else if (v.includes('lead') || v.includes('trưởng phòng')) role = UserRole.DEPARTMENT_LEAD;
+  else if (v.includes('pc') || v.includes('coordinator')) role = UserRole.PROJECT_COORDINATOR;
+  else if (v.includes('nhân viên') || v.includes('employee')) role = UserRole.EMPLOYEE;
+
+  // Xác định Loại hợp đồng
+  if (v.includes('intern') || v.includes('thực tập')) employmentType = EmploymentType.INTERN;
+  else if (v.includes('thử việc') || v.includes('probation')) employmentType = EmploymentType.PROBATION;
+  else if (v.includes('chính thức') || v.includes('official')) employmentType = EmploymentType.OFFICIAL;
 
   return {
-    role: UserRole.EMPLOYEE,
+    role,
     employmentType,
   };
+}
+
+export function normalizeDepartment(raw: string | undefined): Department | undefined {
+  if (!raw) return undefined;
+  const v = raw.toLowerCase().trim();
+
+  if (v.includes('it') || v.includes('công nghệ')) return Department.IT;
+  if (v.includes('hr') || v.includes('nhân sự')) return Department.HR;
+  if (v.includes('kế toán') || v.includes('accounting') || v.includes('tài chính')) return Department.ACCOUNTING;
+  if (v.includes('kinh doanh') || v.includes('sales') || v.includes('bán hàng')) return Department.SALES;
+  if (v.includes('mail service')) return Department.MAIL_SERVICE;
+  if (v.includes('fullfillment')) return Department.FULLFILLMENT;
+  if (v.includes('chủ tịch') || v.includes('ban giám đốc') || v.includes('board')) return Department.BOARD_OF_DIRECTORS;
+
+  return undefined;
+}
+
+export function normalizeSex(raw: string | undefined): SexEnum | undefined {
+  if (!raw) return undefined;
+  const v = raw.toLowerCase().trim();
+
+  if (v === 'nam' || v === 'male' || v === 'm') return SexEnum.MALE;
+  if (v === 'nữ' || v === 'female' || v === 'f') return SexEnum.FEMALE;
+  if (v === 'khác' || v === 'other') return SexEnum.OTHER;
+
+  return undefined;
 }
 
 export const HEADER_MAP: Record<keyof RawInviteRow, string[]> = {

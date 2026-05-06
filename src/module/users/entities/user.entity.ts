@@ -8,6 +8,7 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { UserStatus } from 'src/common/enums/user-status.enum';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { SexEnum } from 'src/common/enums/user-sex.enum';
+import { Department } from 'src/common/enums/department.enum';
 import { OneToMany } from 'typeorm';
 import { LeaveRequest } from '../../leave/entities/leave-request.entity';
 import { LeaveBalance } from '../../leave/entities/leave-balance.entity';
@@ -40,8 +41,12 @@ export class User {
   @Column({ type: 'date', nullable: true })
   dateOfBirth: Date;
 
-  @Column({ nullable: true })
-  departmentName: string;
+  @Column({
+    type: 'enum',
+    enum: Department,
+    nullable: true,
+  })
+  departmentName: Department;
 
   @Column({ nullable: true })
   address: string;
@@ -69,7 +74,7 @@ export class User {
 
   // Ngày lên chính thức (chỉ có khi đã là OFFICIAL)
   @Column({ type: 'date', nullable: true })
-  officialDate: Date;
+  officialDate: Date | null;
 
   // zoho
   @Column({ nullable: true })

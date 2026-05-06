@@ -9,6 +9,7 @@ import {
   Param,
   ParseIntPipe,
   ForbiddenException,
+  Patch,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -23,6 +24,8 @@ import { ForbiddenError } from '@casl/ability';
 import { ActiveUser } from 'src/common/interfaces/active-user.interface';
 import type { RequestWithUser } from 'src/common/interfaces/request-with-user.interface';
 import { APP_ERRORS } from 'src/common/errors/app.errors';
+import { EmployeeListQueryDto } from './dto/employee-list-query.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -59,6 +62,22 @@ export class UsersController {
     return this.usersService.getEmployeesList(req.user.userId, search);
   }
 
+  // [HR/Admin] Lấy danh sách toàn bộ nhân viên công ty
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies((ability) => ability.can(Action.Manage, User))
+  @Get('/company-employees')
+  @ApiOperation({ summary: '[HR/Admin] Lấy danh sách nhân viên toàn công ty' })
+  @ApiQuery({ name: 'search', required: false, description: 'Tìm kiếm theo tên hoặc email' })
+  @ApiQuery({ name: 'departmentName', required: false, description: 'Lọc theo phòng ban' })
+  @ApiQuery({ name: 'page', required: false, description: 'Trang (mặc định: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Số bản ghi mỗi trang (mặc định: 10)' })
+  @ApiBearerAuth()
+  getCompanyEmployees(
+    @Query() query: EmployeeListQueryDto,
+  ) {
+    return this.usersService.getCompanyEmployees(query);
+  }
+
   @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies((ability) => ability.can(Action.Read, User))
   @Get(':id')
@@ -82,5 +101,14 @@ export class UsersController {
     } catch (error) {
       throw new ForbiddenException(APP_ERRORS.VIEW_USER_FORBIDDEN);
     }
+  }
+
+  @Patch(':id')
+  @CheckPolicies((ability) => ability.can(Action.Update, User))
+  updateUser(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.updateUser(Number(id), dto);
   }
 }

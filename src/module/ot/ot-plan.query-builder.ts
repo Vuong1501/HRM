@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
 import { User } from '../users/entities/user.entity';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { Department } from 'src/common/enums/department.enum';
 import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 import dayjs from 'dayjs';
 
@@ -31,7 +32,7 @@ export class OtPlanQueryBuilder {
 
         // Admin chỉ thấy plan của các phòng không phải IT (phòng IT do Lead IT duyệt)
         if (user.role === UserRole.ADMIN) {
-            qb.andWhere('creator.departmentName != :itDept', { itDept: 'IT' });
+            qb.andWhere('creator.departmentName != :itDept', { itDept: Department.IT });
         }
 
         if (user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.PROJECT_COORDINATOR) {
