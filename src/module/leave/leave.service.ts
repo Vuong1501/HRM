@@ -323,11 +323,8 @@ export class LeaveService {
     return this.getLeaveList(user, query, false);
   }
 
-  // HR xem danh sách đơn đã được APPROVED (dùng cho màn hình report)
+  // api hr xem list đơn nghỉ được chấp nhận của cả cty (dùng cho màn hình report)
   async getApprovedLeaveReport(user: User, query: LeaveListQueryDto) {
-    if (user.role !== UserRole.HR) {
-      throw new ForbiddenException('Chỉ HR mới có quyền xem báo cáo này');
-    }
 
     const { page = 1, limit = 10 } = query;
 

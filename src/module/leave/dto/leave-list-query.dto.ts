@@ -2,6 +2,7 @@ import { LeaveRequestStatus } from "src/common/enums/leave-request-status.enum";
 import { IsOptional, IsEnum, IsString, IsInt, IsDateString, Min, Max } from "class-validator";
 import { PaginationDto } from "src/common/pagination/pagination.dto";
 import { Type } from 'class-transformer';
+import { Department } from "src/common/enums/department.enum";
 
 export class LeaveListQueryDto extends PaginationDto {
 
@@ -14,8 +15,8 @@ export class LeaveListQueryDto extends PaginationDto {
   search?: string;
 
   @IsOptional()
-  @IsString()
-  department?: string;
+  @IsEnum(Department)
+  department?: Department;
 
   @IsOptional()
   @IsDateString()

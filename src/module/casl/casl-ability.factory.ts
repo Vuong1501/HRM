@@ -30,6 +30,8 @@ export class CaslAbilityFactory {
     } else if (user.role === UserRole.HR) {
       can(Action.Manage, User);
 
+      can(Action.ViewReport, LeaveRequest);
+
       can(Action.Read, LeaveRequest);
       can(Action.Create, LeaveRequest);
       can(Action.Approve, LeaveRequest);

@@ -107,10 +107,6 @@ export class LeaveRequestQueryBuilder {
         qb.andWhere('lr.status = :status', {
             status: LeaveRequestStatus.APPROVED,
         });
-        // HR chỉ xem trong phòng ban của mình
-        qb.andWhere('user.departmentName = :dept', {
-            dept: user.departmentName,
-        });
         return qb;
     }
 }

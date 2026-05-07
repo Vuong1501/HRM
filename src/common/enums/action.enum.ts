@@ -10,4 +10,5 @@ export enum Action {
   CheckIn = 'check_in',
   CheckOut = 'check_out',
   Submit = 'submit',
+  ViewReport = 'view_report'
 }
