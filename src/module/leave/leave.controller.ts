@@ -32,6 +32,7 @@ import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { leaveUploadOptions, MAX_FILES  } from 'src/common/multer/leave-upload.config';
 import dayjs from 'dayjs';
 import { AnnualSummaryQueryDto } from './dto/annual-summary-query.dto';
+import { MonthYearQueryMyDto } from './dto/moth-year-query-my.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -194,14 +195,13 @@ export class LeaveController {
   @CheckPolicies((ability) => ability.can(Action.Read, LeaveRequest))
   getMyCalendar(
     @Req() req: RequestWithUser,
-    @Query('month') month?: string,
-    @Query('year') year?: string,
+    @Query() query: MonthYearQueryMyDto
   ) {
       const now = dayjs();
       return this.leaveService.getMyCalendar(
           req.userEntity.id,
-          Number(month) || now.month() + 1,
-          Number(year) || now.year(),
+          query.month || now.month() + 1,
+          query.year || now.year(),
       );
   }
 
