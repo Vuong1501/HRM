@@ -34,6 +34,8 @@ import { LEAVE_CONSTANTS } from 'src/common/constants/leave.constants';
 import { EMPLOYEE_LIKE_ROLES } from 'src/common/constants/role-groups.constant';
 import { HolidayService } from '../holiday/holiday.service';
 import dayjs from 'dayjs';
+import { AnnualSummaryQueryDto } from './dto/annual-summary-query.dto';
+import { UserStatus } from 'src/common/enums/user-status.enum';
 
 @Injectable()
 export class LeaveService {
@@ -383,6 +385,136 @@ export class LeaveService {
       total,
       page,
       lastPage: Math.ceil(total / limit),
+    };
+  }
+
+  // api hr xem thống kê nghỉ dùng phép năm của toàn công ty (màn report)
+  async getReportSummary(query: AnnualSummaryQueryDto) {
+    const { page = 1, limit = 10, year = dayjs().year(), department, search } = query;
+    // lấy danh sách user
+    const userQb =  this.userRepo.createQueryBuilder('u')
+      .where('u.status = :status', { status: UserStatus.ACTIVE })
+      .andWhere('u.employmentType IN (:...types)', {
+            types: [EmploymentType.PROBATION, EmploymentType.OFFICIAL],
+      });
+
+    if (department) {
+        userQb.andWhere('u.departmentName = :department', { department });
+    }
+
+    if (search) {
+        userQb.andWhere('u.name LIKE :search', { search: `%${search}%` });
+    }
+
+    const total = await userQb.getCount();
+
+    const users = await userQb
+      .orderBy('u.departmentName', 'ASC')
+      .addOrderBy('u.name', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+
+    if (users.length === 0) {
+        return { data: [], total: 0, page, lastPage: 0 };
+    }
+
+    const userIds = users.map(u => u.id);
+
+    // Query balance 1 lần cho tất cả user
+    const balances = await this.leaveBalanceRepo.find({
+        where: { userId: In(userIds), year },
+    });
+    const balanceMap = new Map(balances.map(b => [b.userId, b]));
+
+    // Query đơn nghỉ PAID APPROVED 1 lần cho tất cả user
+    const approvedLeaves = await this.leaveRequestRepo.find({
+        where: {
+            userId: In(userIds),
+            leaveType: LeaveType.PAID,
+            status: LeaveRequestStatus.APPROVED,
+        },
+    });
+
+    // Group đơn nghỉ theo userId
+    const leavesMap = new Map<number, typeof approvedLeaves>();
+    approvedLeaves.forEach(leave => {
+        const existing = leavesMap.get(leave.userId);
+        if (existing) {
+            existing.push(leave);
+        } else {
+            leavesMap.set(leave.userId, [leave]);
+        }
+    });
+
+    // Query holidays 1 lần cho cả năm → build Set để check O(1)
+    const holidays = await this.holidayService.getHolidaysByYear(year);
+    const holidaySet = new Set<string>();
+    holidays.forEach(h => {
+        let current = dayjs(h.startDate);
+        const end = dayjs(h.endDate);
+        while (current.isBefore(end) || current.isSame(end, 'day')) {
+            holidaySet.add(current.format('YYYY-MM-DD'));
+            current = current.add(1, 'day');
+        }
+    });
+
+    const isWeekendOrHoliday = (date: dayjs.Dayjs): boolean => {
+        const day = date.day();
+        return day === 0 || day === 6 || holidaySet.has(date.format('YYYY-MM-DD'));
+    };
+
+    // Tính data cho từng user
+    const data = users.map(u => {
+        const balance = balanceMap.get(u.id);
+        const userLeaves = leavesMap.get(u.id) || [];
+
+        const monthlyUsed: Record<string, number> = {
+            T1: 0, T2: 0, T3: 0, T4: 0,
+            T5: 0, T6: 0, T7: 0, T8: 0,
+            T9: 0, T10: 0, T11: 0, T12: 0,
+        };
+
+        for (const leave of userLeaves) {
+            const start = dayjs(leave.startDate).startOf('day');
+            const end = dayjs(leave.endDate).startOf('day');
+            let current = start;
+
+            while (current.isBefore(end) || current.isSame(end, 'day')) {
+                if (current.year() === year && !isWeekendOrHoliday(current)) {
+                    const monthKey = `T${current.month() + 1}`;
+                    const isFirstDay = current.isSame(start, 'day');
+                    const isLastDay = current.isSame(end, 'day');
+
+                    let dayValue = 1;
+                    if (isFirstDay && leave.startHalfDayType === HalfDayType.AFTERNOON) dayValue -= 0.5;
+                    if (isLastDay && leave.endHalfDayType === HalfDayType.MORNING) dayValue -= 0.5;
+
+                    monthlyUsed[monthKey] += dayValue;
+                }
+                current = current.add(1, 'day');
+            }
+        }
+
+        const annualLeaveTotal = Number(balance?.annualLeaveTotal ?? 0);
+        const annualLeaveUsed = Number(balance?.annualLeaveUsed ?? 0);
+
+        return {
+            userId: u.id,
+            employeeName: u.name,
+            departmentName: u.departmentName,
+            annualLeaveTotal,
+            annualLeaveUsed,
+            annualLeaveRemaining: annualLeaveTotal - annualLeaveUsed,
+            monthlyUsed,
+        };
+    });
+
+    return {
+        data,
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
     };
   }
 

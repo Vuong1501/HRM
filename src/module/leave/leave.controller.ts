@@ -31,6 +31,7 @@ import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CancelLeaveRequestDto } from './dto/cancel-leave-request.dto';
 import { leaveUploadOptions, MAX_FILES  } from 'src/common/multer/leave-upload.config';
 import dayjs from 'dayjs';
+import { AnnualSummaryQueryDto } from './dto/annual-summary-query.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -90,6 +91,15 @@ export class LeaveController {
     @Query() query: LeaveListQueryDto,
   ) {
     return this.leaveService.getApprovedLeaveReport(req.userEntity, query);
+  }
+
+  // api hr xem thống kê nghỉ dùng phép năm của toàn công ty (màn report)
+  @Get('report/summary')
+  @CheckPolicies((ability) => ability.can(Action.ViewReport, LeaveRequest))
+  getReportSummary(
+    @Query() query: AnnualSummaryQueryDto
+  ) { 
+    return this.leaveService.getReportSummary(query);
   }
 
   // lead_dep, admin duyệt đơn nghỉ
@@ -194,4 +204,5 @@ export class LeaveController {
           Number(year) || now.year(),
       );
   }
+
 }

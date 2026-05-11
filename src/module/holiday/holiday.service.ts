@@ -134,4 +134,9 @@ export class HolidayService {
         }
             
     }
+
+    // lấy ngày nghỉ theo năm
+    async getHolidaysByYear(year: number): Promise<Holiday[]> {
+        return this.holidayRepository.find({ where: { year } });
+    }
 }
