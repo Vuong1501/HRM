@@ -33,6 +33,7 @@ import { leaveUploadOptions, MAX_FILES  } from 'src/common/multer/leave-upload.c
 import dayjs from 'dayjs';
 import { AnnualSummaryQueryDto } from './dto/annual-summary-query.dto';
 import { MonthYearQueryMyDto } from './dto/moth-year-query-my.dto';
+import { MonthYearQueryHRDto } from './dto/moth-year-query-hr.dto';
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -101,6 +102,15 @@ export class LeaveController {
     @Query() query: AnnualSummaryQueryDto
   ) { 
     return this.leaveService.getReportSummary(query);
+  }
+
+  // api hr xem thống kê nghỉ theo năm/tháng của cả cty(màn report)
+  @Get('report/summary-monthly')
+  @CheckPolicies((ability) => ability.can(Action.ViewReport, LeaveRequest))
+  getSummaryMonthlyHR(
+    @Query() query: MonthYearQueryHRDto
+  ) { 
+    return this.leaveService.getSummaryMonthlyHR(query);
   }
 
   // lead_dep, admin duyệt đơn nghỉ

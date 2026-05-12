@@ -36,6 +36,7 @@ import { HolidayService } from '../holiday/holiday.service';
 import dayjs from 'dayjs';
 import { AnnualSummaryQueryDto } from './dto/annual-summary-query.dto';
 import { UserStatus } from 'src/common/enums/user-status.enum';
+import { MonthYearQueryHRDto } from './dto/moth-year-query-hr.dto';
 
 @Injectable()
 export class LeaveService {
@@ -60,7 +61,7 @@ export class LeaveService {
     private mailService: MailService,
     private dataSource: DataSource,
     private storageService: StorageService,
-    private readonly holidayService: HolidayService
+    private readonly holidayService: HolidayService,
   ) {}
 
   async getLeaveList(user: User, query: LeaveListQueryDto, isSelf = false) {
@@ -1146,6 +1147,143 @@ export class LeaveService {
         year,
         totalDays,
         days,
+    };
+  }
+
+  // api hr thống kê nghỉ theo năm/tháng của cả cty
+  async getSummaryMonthlyHR(query: MonthYearQueryHRDto) {
+    const now = dayjs();
+    const { page = 1, limit = 10, month = now.month() + 1, year = now.year(), department, search } = query;
+
+    const startOfMonth = dayjs(`${year}-${month}-01`).startOf('month');
+    const endOfMonth = startOfMonth.endOf('month');
+
+    // lấy danh sách user
+    const userQb = this.userRepo.createQueryBuilder('u')
+      .where('u.status = :status', { status: UserStatus.ACTIVE })
+      .andWhere('u.employmentType IN (:...type)', {
+        type: [EmploymentType.OFFICIAL, EmploymentType.PROBATION, EmploymentType.INTERN]
+      })
+
+    if (department) {
+      userQb.andWhere('u.departmentName = :department', { department });
+    }
+
+    if (search) {
+      userQb.andWhere('u.name LIKE :search', { search: `%${search}%` });
+    }
+
+    const total = await userQb.getCount();
+
+    const users = await userQb
+      .orderBy('u.departmentName', 'ASC')
+      .addOrderBy('u.name', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+
+    if (users.length === 0) {
+        return { data: [], total: 0, page, lastPage: 0 };
+    }
+
+    const userIds = users.map(u => u.id);
+
+    // Query đơn nghỉ APPROVED trong tháng của tất cả user 1 lần
+    const approvedLeaves = await this.leaveRequestRepo.find({
+        where: {
+            userId: In(userIds),
+            status: LeaveRequestStatus.APPROVED,
+            startDate: LessThanOrEqual(endOfMonth.toDate()),
+            endDate: MoreThanOrEqual(startOfMonth.toDate()),
+        },
+    });
+
+    // Group đơn nghỉ theo userId
+    const leavesMap = new Map<number, typeof approvedLeaves>();
+    approvedLeaves.forEach(leave => {
+        const existing = leavesMap.get(leave.userId);
+        if (existing) {
+            existing.push(leave);
+        } else {
+            leavesMap.set(leave.userId, [leave]);
+        }
+    });
+
+    // Query holidays trong tháng 1 lần → build Set
+    const holidays = await this.holidayService.getHolidaysByYear(year);
+    const holidaySet = new Set<string>();
+    holidays.forEach(h => {
+        let current = dayjs(h.startDate);
+        const end = dayjs(h.endDate);
+        while (current.isBefore(end) || current.isSame(end, 'day')) {
+            holidaySet.add(current.format('YYYY-MM-DD'));
+            current = current.add(1, 'day');
+        }
+    });
+
+    const isWeekendOrHoliday = (date: dayjs.Dayjs): boolean => {
+        const day = date.day();
+        return day === 0 || day === 6 || holidaySet.has(date.format('YYYY-MM-DD'));
+    };
+
+        // Tính data cho từng user
+    const data = users.map(u => {
+      const userLeaves = leavesMap.get(u.id) || [];
+
+      const days: {
+          date: string;
+          leaveType: string;
+          startHalf: HalfDayType;
+          endHalf: HalfDayType;
+      }[] = [];
+
+      let totalDays = 0;
+
+      for (const leave of userLeaves) {
+          const leaveStart = dayjs(leave.startDate).startOf('day');
+          const leaveEnd = dayjs(leave.endDate).startOf('day');
+          let current = leaveStart;
+
+          while (current.isBefore(leaveEnd) || current.isSame(leaveEnd, 'day')) {
+              if (current.month() + 1 === month && current.year() === year) {
+                  if (!isWeekendOrHoliday(current)) {
+                      const isFirstDay = current.isSame(leaveStart, 'day');
+                      const isLastDay = current.isSame(leaveEnd, 'day');
+
+                      let dayValue = 1;
+                      if (isFirstDay && leave.startHalfDayType === HalfDayType.AFTERNOON) dayValue -= 0.5;
+                      if (isLastDay && leave.endHalfDayType === HalfDayType.MORNING) dayValue -= 0.5;
+
+                      totalDays += dayValue;
+
+                      days.push({
+                          date: current.format('YYYY-MM-DD'),
+                          leaveType: leave.leaveType,
+                          startHalf: isFirstDay ? leave.startHalfDayType : HalfDayType.MORNING,
+                          endHalf: isLastDay ? leave.endHalfDayType : HalfDayType.AFTERNOON,
+                      });
+                  }
+              }
+              current = current.add(1, 'day');
+          }
+      }
+
+      return {
+          userId: u.id,
+          employeeName: u.name,
+          departmentName: u.departmentName,
+          totalDays,
+          days,
+      };
+    });
+
+    return {
+      month,
+      year,
+      data,
+      total,
+      page,
+      lastPage: Math.ceil(total / limit),
     };
   }
 
