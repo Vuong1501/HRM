@@ -214,5 +214,5 @@ export class LeaveController {
           query.year || now.year(),
       );
   }
-
+  
 }

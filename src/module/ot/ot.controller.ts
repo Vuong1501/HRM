@@ -25,6 +25,7 @@ import { OtPlanListQueryDto } from './dto/ot-plan-list-query.dto';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
+import { MonthYearQueryMyDto } from './dto/moth-year-query-my.dto';
 
 @ApiTags('ot')
 @Controller('ot')
@@ -171,6 +172,15 @@ export class OtController {
         @Query() query: OtTicketListQueryDto,
     ) {
         return this.otService.getListOtTickets(req.userEntity, query);
+    }
+
+    @Get('ticket/my-summary-ot')
+    @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
+    getMyOtSummary(
+        @Req() req: RequestWithUser,
+        @Query() query: MonthYearQueryMyDto,
+    ) {
+        return this.otService.getMyOtSummary(req.userEntity, query);
     }
 
     @Get('ticket/:id')

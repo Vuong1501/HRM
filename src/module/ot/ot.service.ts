@@ -28,6 +28,7 @@ import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
 import { OtTicketQueryBuilder } from './ot-ticket.query-builder';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
+import { OtSegmentType } from 'src/common/enums/ot/ot-segment-type.enum';
 
 const IT_DEPARTMENT = Department.IT;
 const OT_WEEKDAY_START_HOUR = 17;
@@ -1489,4 +1490,99 @@ export class OtService {
             await queryRunner.release();
         }
     }
+
+    // API thống kê OT cá nhân theo năm/tháng
+    async getMyOtSummary(user: User, query: { year?: number; month?: number }) {
+        const now = dayjs();
+        const year = query.year || now.year();
+        const month = query.month || now.month() + 1;
+
+        const startOfMonth = dayjs(`${year}-${month}-01`).startOf('month');
+        const endOfMonth = startOfMonth.endOf('month');
+
+        // lấy ra các đơn ot trong tháng
+        const tickets = await this.otPlanEmployeeRepo
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.otPlan', 'otPlan')
+            .leftJoinAndSelect('ticket.timeSegments', 'timeSegments')
+            .where('ticket.employeeId = :userId', { userId: user.id })
+            .andWhere('otPlan.startTime <= :endOfMonth', { endOfMonth: endOfMonth.toDate() })
+            .andWhere('otPlan.endTime >= :startOfMonth', { startOfMonth: startOfMonth.toDate() })
+            .andWhere('ticket.status IN (:...status)', { status: [OtPlanEmployeeStatus.APPROVED, OtPlanEmployeeStatus.UPDATED] })
+            .orderBy('otPlan.startTime', 'ASC')
+            .getMany();
+        console.log("segment", JSON.stringify(tickets, null, 2));
+        
+        // Tính tổng theo từng segment type
+        const summaryBySegment: Record<OtSegmentType, number> = {
+            [OtSegmentType.WEEKDAY_DAY]: 0,
+            [OtSegmentType.WEEKDAY_NIGHT]: 0,
+            [OtSegmentType.WEEKEND_DAY]: 0,
+            [OtSegmentType.WEEKEND_NIGHT]: 0,
+            [OtSegmentType.HOLIDAY_DAY]: 0,
+            [OtSegmentType.HOLIDAY_NIGHT]: 0,
+        };
+
+        // map từng ticket ra data
+        const data = tickets.map((ticket) => {
+            // cộng từng phút theo segment
+            ticket.timeSegments?.forEach(seg => {
+                summaryBySegment[seg.segmentType] += Number(seg.minutes);
+            });
+
+            // lấy ra thời gian checkin, checkout thực tế
+            const actualCheckIn = ticket.checkInAfterUpdate ?? ticket.checkInTime;
+            const actualCheckOut = ticket.checkOutAfterUpdate ?? ticket.checkOutTime;
+            
+            return {
+                ticketId: ticket.id,
+                status: ticket.status,
+                mode: ticket.mode ?? null,
+                planStartTime: ticket.otPlan?.startTime ?? null,
+                planEndTime: ticket.otPlan?.endTime ?? null,
+                checkInTime: actualCheckIn ?? null,
+                checkOutTime: actualCheckOut ?? null,
+                actualMinutes: ticket.actualMinutes ?? 0,
+                otMinutes: ticket.otMinutes ?? 0,
+                compensatoryMinutes: ticket.compensatoryMinutes ?? 0,
+                workContent: ticket.workContent ?? null,
+                segments: ticket.timeSegments?.map(seg => ({
+                segmentType: seg.segmentType,
+                    date: seg.date,
+                    startTime: seg.startTime,
+                    endTime: seg.endTime,
+                    minutes: seg.minutes,
+                })) ?? [],
+            }
+        });
+
+        console.log("data", JSON.stringify(data, null, 2));
+
+        // tổng phút cả tháng
+        const totalActualMinutes  = tickets.reduce((sum, t) => sum + (t.actualMinutes ?? 0),0);
+        const totalOtMinutes = tickets.reduce((sum, t) => sum + (t.otMinutes ?? 0), 0);
+        const totalCompensatoryMinutes = tickets.reduce((sum, t) => sum + (t.compensatoryMinutes ?? 0), 0);
+
+        return {
+            month,
+            year,
+            summary: {
+                totalTickets: tickets.length,
+                totalActualMinutes,
+                totalOtMinutes,
+                totalCompensatoryMinutes,
+                bySegment: {
+                    weekdayDay: summaryBySegment[OtSegmentType.WEEKDAY_DAY],
+                    weekdayNight: summaryBySegment[OtSegmentType.WEEKDAY_NIGHT],
+                    weekendDay: summaryBySegment[OtSegmentType.WEEKEND_DAY],
+                    weekendNight: summaryBySegment[OtSegmentType.WEEKEND_NIGHT],
+                    holidayDay: summaryBySegment[OtSegmentType.HOLIDAY_DAY],
+                    holidayNight: summaryBySegment[OtSegmentType.HOLIDAY_NIGHT],
+                },
+            },
+            data,
+        }
+    }
 }
+
+
