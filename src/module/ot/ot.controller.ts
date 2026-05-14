@@ -175,6 +175,7 @@ export class OtController {
         return this.otService.getListOtTickets(req.userEntity, query);
     }
 
+    // xem thống kê ot của bản thân
     @Get('ticket/my-summary-ot')
     @CheckPolicies((ability) => ability.can(Action.Read, OtPlanEmployee))
     getMyOtSummary(
@@ -182,6 +183,13 @@ export class OtController {
         @Query() query: MonthYearQueryMyDto,
     ) {
         return this.otService.getMyOtSummary(req.userEntity, query);
+    }
+
+    // hr xem thống kê ot của cty
+    @Get('ticket/report/list-summary')
+    @CheckPolicies((ability) => ability.can(Action.ViewReport, OtPlanEmployee))
+    getOtSummaryReport(@Query() query: SummaryListTicketQueryDto) {
+        return this.otService.getOtSummaryReport(query);
     }
 
     // api HR xem list ot ticket được chấp nhận

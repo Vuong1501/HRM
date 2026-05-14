@@ -1,4 +1,4 @@
-import { IsOptional, IsInt, IsEnum, IsString } from 'class-validator';
+import { IsOptional, IsInt, IsEnum, IsString, Max, Min } from 'class-validator';
 import { Department } from 'src/common/enums/department.enum';
 import { PaginationDto } from 'src/common/pagination/pagination.dto';
 import { Type } from 'class-transformer';
@@ -12,4 +12,17 @@ export class SummaryListTicketQueryDto extends PaginationDto {
     @IsOptional()
     @IsString()
     search?: string;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(12)
+    month?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(2000)
+    year?: number;
 }

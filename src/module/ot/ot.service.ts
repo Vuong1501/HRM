@@ -30,6 +30,8 @@ import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 import { OtSegmentType } from 'src/common/enums/ot/ot-segment-type.enum';
 import { SummaryListTicketQueryDto } from './dto/summary-list-ticket.dto';
+import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
+import { UserStatus } from 'src/common/enums/user-status.enum';
 
 const IT_DEPARTMENT = Department.IT;
 const OT_WEEKDAY_START_HOUR = 17;
@@ -1490,6 +1492,150 @@ export class OtService {
         } finally {
             await queryRunner.release();
         }
+    }
+
+    // hr xem thống kê ot của cty
+    async getOtSummaryReport(query: SummaryListTicketQueryDto) {
+        const now = dayjs();
+        const { page = 1, limit = 10, department, search } = query;
+        const year = query.year || now.year();
+        const month = query.month || now.month() + 1;
+
+        const startOfMonth = dayjs(`${year}-${month}-01`).startOf('month');
+        const endOfMonth = startOfMonth.endOf('month');
+
+        // Query danh sách user
+        const userQb = this.userRepo.createQueryBuilder('u')
+            .where('u.status = :status', { status: UserStatus.ACTIVE })
+            .andWhere('u.employmentType IN (:...types)', {
+                types: [EmploymentType.PROBATION, EmploymentType.OFFICIAL],
+            });
+
+        if (department) {
+            userQb.andWhere('u.departmentName = :department', { department });
+        }
+
+        if (search) {
+            userQb.andWhere('u.name LIKE :search', { search: `%${search}%` });
+        }
+
+        const total = await userQb.getCount();
+
+        const users = await userQb
+            .orderBy('u.departmentName', 'ASC')
+            .addOrderBy('u.name', 'ASC')
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .getMany();
+
+        if (users.length === 0) {
+            return { month, year, data: [], total: 0, page, lastPage: 0 };
+        }
+
+        const userIds = users.map(u => u.id);
+
+        const allTickets = await this.otPlanEmployeeRepo
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.otPlan', 'otPlan')
+            .leftJoinAndSelect('ticket.timeSegments', 'timeSegments')
+            .where('ticket.employeeId IN (:...userIds)', { userIds })
+            .andWhere('otPlan.startTime <= :endOfMonth', { endOfMonth: endOfMonth.toDate() })
+            .andWhere('otPlan.endTime >= :startOfMonth', { startOfMonth: startOfMonth.toDate() })
+            .andWhere('ticket.status IN (:...statuses)', {
+                statuses: [OtPlanEmployeeStatus.APPROVED, OtPlanEmployeeStatus.UPDATED],
+            })
+            .orderBy('otPlan.startTime', 'ASC')
+            .getMany();
+
+        // Group tickets theo userId
+        const ticketsMap = new Map<number, typeof allTickets>();
+        allTickets.forEach(ticket => {
+            const existing = ticketsMap.get(ticket.employeeId);
+            if (existing) {
+                existing.push(ticket);
+            } else {
+                ticketsMap.set(ticket.employeeId, [ticket]);
+            }
+        });
+
+        // Tính data cho từng user
+        const data = users.map(u => {
+            const userTickets = ticketsMap.get(u.id) || [];
+
+            const summaryBySegment: Record<OtSegmentType, number> = {
+                [OtSegmentType.WEEKDAY_DAY]: 0,
+                [OtSegmentType.WEEKDAY_NIGHT]: 0,
+                [OtSegmentType.WEEKEND_DAY]: 0,
+                [OtSegmentType.WEEKEND_NIGHT]: 0,
+                [OtSegmentType.HOLIDAY_DAY]: 0,
+                [OtSegmentType.HOLIDAY_NIGHT]: 0,
+            };
+
+            const tickets = userTickets.map(ticket => {
+                ticket.timeSegments?.forEach(seg => {
+                    summaryBySegment[seg.segmentType] += Number(seg.minutes);
+                });
+
+                const actualCheckIn = ticket.checkInAfterUpdate ?? ticket.checkInTime;
+                const actualCheckOut = ticket.checkOutAfterUpdate ?? ticket.checkOutTime;
+
+                return {
+                    ticketId: ticket.id,
+                    status: ticket.status,
+                    mode: ticket.mode ?? null,
+                    planStartTime: ticket.otPlan?.startTime ?? null,
+                    planEndTime: ticket.otPlan?.endTime ?? null,
+                    checkInTime: actualCheckIn ?? null,
+                    checkOutTime: actualCheckOut ?? null,
+                    actualMinutes: ticket.actualMinutes ?? 0,
+                    otMinutes: ticket.otMinutes ?? 0,
+                    compensatoryMinutes: ticket.compensatoryMinutes ?? 0,
+                    workContent: ticket.workContent ?? null,
+                    segments: ticket.timeSegments?.map(seg => ({
+                        segmentType: seg.segmentType,
+                        date: seg.date,
+                        startTime: seg.startTime,
+                        endTime: seg.endTime,
+                        minutes: seg.minutes,
+                    })) ?? [],
+                };
+            });
+
+            const totalActualMinutes = userTickets.reduce((sum, t) => sum + (t.actualMinutes ?? 0), 0);
+            const totalOtMinutes = userTickets.reduce((sum, t) => sum + (t.otMinutes ?? 0), 0);
+            const totalCompensatoryMinutes = userTickets.reduce((sum, t) => sum + (t.compensatoryMinutes ?? 0), 0);
+
+            return {
+                userId: u.id,
+                employeeName: u.name,
+                departmentName: u.departmentName,
+                summary: {
+                    totalTickets: userTickets.length,
+                    totalActualMinutes,
+                    totalOtMinutes,
+                    totalCompensatoryMinutes,
+                    bySegment: {
+                        weekdayDay: summaryBySegment[OtSegmentType.WEEKDAY_DAY],
+                        weekdayNight: summaryBySegment[OtSegmentType.WEEKDAY_NIGHT],
+                        weekendDay: summaryBySegment[OtSegmentType.WEEKEND_DAY],
+                        weekendNight: summaryBySegment[OtSegmentType.WEEKEND_NIGHT],
+                        holidayDay: summaryBySegment[OtSegmentType.HOLIDAY_DAY],
+                        holidayNight: summaryBySegment[OtSegmentType.HOLIDAY_NIGHT],
+                    },
+                },
+                tickets,
+            };
+        });
+
+        return {
+            month,
+            year,
+            data,
+            total,
+            page,
+            lastPage: Math.ceil(total / limit),
+        };
+
     }
 
     // API thống kê OT cá nhân theo năm/tháng
