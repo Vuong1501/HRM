@@ -7,6 +7,8 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
 import { EMPLOYEE_LIKE_ROLES } from 'src/common/constants/role-groups.constant';
 import dayjs from 'dayjs';
+import { OtPlanEmployeeStatus } from 'src/common/enums/ot/ot-employee-status.enum';
+import { SummaryListTicketQueryDto } from './dto/summary-list-ticket.dto';
 
 @Injectable()
 export class OtTicketQueryBuilder {
@@ -75,6 +77,29 @@ export class OtTicketQueryBuilder {
             });
         }
 
+        return qb;
+    }
+
+    applyHRReportFilters(
+        qb: SelectQueryBuilder<OtPlanEmployee>,
+        query: SummaryListTicketQueryDto,
+    ): SelectQueryBuilder<OtPlanEmployee> {
+        if (query.search) {
+            qb.andWhere('employee.name LIKE :search', { search: `%${query.search}%` });
+        }
+        if (query.department) {
+            qb.andWhere('employee.departmentName = :dept', { dept: query.department });
+        }
+        return qb;
+    }
+
+    // cho hr lấy danh sách ot ticket được duyệt và update
+    applyHRReportAuthorization(
+        qb: SelectQueryBuilder<OtPlanEmployee>
+    ): SelectQueryBuilder<OtPlanEmployee> {
+        qb.andWhere('ticket.status IN(:...status)', {
+            status: [OtPlanEmployeeStatus.APPROVED, OtPlanEmployeeStatus.UPDATED],
+        });
         return qb;
     }
 }

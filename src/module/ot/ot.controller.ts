@@ -26,6 +26,7 @@ import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 import { OtTicketListQueryDto } from './dto/ot-ticket-list-query.dto';
 import { MonthYearQueryMyDto } from './dto/moth-year-query-my.dto';
+import { SummaryListTicketQueryDto } from './dto/summary-list-ticket.dto';
 
 @ApiTags('ot')
 @Controller('ot')
@@ -181,6 +182,15 @@ export class OtController {
         @Query() query: MonthYearQueryMyDto,
     ) {
         return this.otService.getMyOtSummary(req.userEntity, query);
+    }
+
+    // api HR xem list ot ticket được chấp nhận
+    @Get('ticket/report/list-approve')
+    @CheckPolicies((ability) => ability.can(Action.ViewReport, OtPlanEmployee))
+    getOtTicketsReport(
+        @Query() query: SummaryListTicketQueryDto,
+    ) {
+        return this.otService.getListOtTicketsReport(query);
     }
 
     @Get('ticket/:id')

@@ -12,6 +12,11 @@ export class OtTicketListQueryDto extends PaginationDto {
   @IsString()
   search?: string;
 
+  // nếu dùng dto này để lấy danh sách ot ticket được duyệt(hr lấy)
+  // @IsOptional()
+  // @IsEnum(Department)
+  // department?: Department;
+
   @IsOptional()
   @IsDateString()
   fromDate?: string;

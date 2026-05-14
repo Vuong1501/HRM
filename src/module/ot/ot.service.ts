@@ -29,6 +29,7 @@ import { OtTicketQueryBuilder } from './ot-ticket.query-builder';
 import { UpdateOtPlanDto } from './dto/update-ot-plan.dto';
 import { UpdateOtTicketTimeDto } from './dto/update-ot-ticket-time.dto';
 import { OtSegmentType } from 'src/common/enums/ot/ot-segment-type.enum';
+import { SummaryListTicketQueryDto } from './dto/summary-list-ticket.dto';
 
 const IT_DEPARTMENT = Department.IT;
 const OT_WEEKDAY_START_HOUR = 17;
@@ -1582,6 +1583,60 @@ export class OtService {
             },
             data,
         }
+    }
+
+    // api danh sách đơn ot ticket được duyệt
+    async getListOtTicketsReport( query: SummaryListTicketQueryDto) {
+        const {page = 1, limit = 10} = query;
+
+        let qb = this.otTicketQueryBuilder.buildBaseQuery();
+        qb = this.otTicketQueryBuilder.applyHRReportAuthorization(qb);
+        qb = this.otTicketQueryBuilder.applyHRReportFilters(qb, query);
+
+        const total = await qb.getCount();
+
+        const dataQb = qb.clone();
+
+        dataQb.select([
+            'ticket.id AS id',
+            'ticket.otPlanId AS otPlanId',
+            'otPlan.startTime AS otPlanStartTime',
+            'otPlan.endTime AS otPlanEndTime',
+            'employee.id AS employeeId',
+            'employee.name AS employeeName',
+            'employee.departmentName AS employeeDepartment',
+            'ticket.status AS status',
+            'ticket.checkInTime AS checkInTime',
+            'ticket.checkOutTime AS checkOutTime',
+            'ticket.actualMinutes AS actualMinutes',
+            'ticket.mode AS mode',
+        ])
+        .orderBy('ticket.createdAt', 'DESC')
+        .offset((page - 1) * limit)
+        .limit(limit);
+
+        const rawData = await dataQb.getRawMany();
+
+        const data = rawData.map((item) => ({
+            id: item.id,
+            otPlanId: item.otPlanId,
+            otPlanStartTime: item.otPlanStartTime,
+            otPlanEndTime: item.otPlanEndTime,
+            employeeId: item.employeeId,
+            employeeName: item.employeeName,
+            employeeDepartment: item.employeeDepartment,
+            status: item.status,
+            checkInTime: item.checkInTime,
+            checkOutTime: item.checkOutTime,
+            actualMinutes: item.actualMinutes,
+            mode: item.mode,
+        }));
+
+    return { 
+        data, 
+        total, 
+        page, 
+        lastPage: Math.ceil(total / limit) };
     }
 }
 
