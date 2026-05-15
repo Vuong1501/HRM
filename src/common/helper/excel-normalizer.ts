@@ -118,7 +118,7 @@ export function normalizeSex(raw: string | undefined): SexEnum | undefined {
 }
 
 export const HEADER_MAP: Record<keyof RawInviteRow, string[]> = {
-  email: ['zoho mail', 'email', 'zoho email'],
+  email: ['zoho mail', 'google mail', 'email', 'zoho email'],
   name: ['name', 'full name'],
   dob: ['dob', 'date of birth', 'birthday'],
   department: ['department', 'dept'],

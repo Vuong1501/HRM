@@ -20,12 +20,12 @@ import { OutboxMail } from './entities/outbox-mail.entity';
           port: configService.get<number>('MAIL_PORT'),
           secure: configService.get<boolean>('MAIL_SECURE'),
           auth: {
-            user:configService.get<string>('ZOHO_EMAIL'),
-            pass: configService.get<string>('ZOHO_APP_PASSWORD'),
+            user: configService.get<string>('GOOGLE_EMAIL'),
+            pass: configService.get<string>('GOOGLE_APP_PASSWORD'),
           },
         },
         defaults: {
-          from: `"HR System" <${configService.get<string>('ZOHO_EMAIL')}>`,
+          from: `"HR System" <${configService.get<string>('GOOGLE_EMAIL')}>`,
         },
         template: {
           dir: join(__dirname, 'templates'),

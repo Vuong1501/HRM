@@ -5,7 +5,7 @@ declare global {
     interface User {
       userId: number;
       email: string;
-      zohoId: string;
+      googleId: string;
       name: string;
       role: string;
     }

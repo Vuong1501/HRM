@@ -7,13 +7,13 @@ import { UsersModule } from '../users/users.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { ZohoStrategy } from './strategies/zoho.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { PassportModule } from '@nestjs/passport';
 
 @Module({
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ZohoStrategy, JwtRefreshStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, JwtRefreshStrategy],
   imports: [
     TypeOrmModule.forFeature([User]),
     UsersModule,

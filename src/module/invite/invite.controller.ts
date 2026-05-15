@@ -34,7 +34,7 @@ export class InviteController {
       maxAge: 10 * 60 * 1000, // 10 phút
     });
 
-    // redirect sang Zoho login
+    // redirect sang Google login
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     return res.redirect(`${frontendUrl}/login?invited=true`);
   }

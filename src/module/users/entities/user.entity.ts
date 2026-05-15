@@ -76,9 +76,9 @@ export class User {
   @Column({ type: 'date', nullable: true })
   officialDate: Date | null;
 
-  // zoho
+  // google
   @Column({ nullable: true })
-  zohoId: string;
+  googleId: string;
 
   // invite
   @Column({ type: 'varchar', nullable: true })

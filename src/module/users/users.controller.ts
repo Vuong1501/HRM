@@ -103,8 +103,9 @@ export class UsersController {
     }
   }
 
-  @Patch(':id')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies((ability) => ability.can(Action.Update, User))
+  @Patch(':id')
   updateUser(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,

@@ -21,7 +21,7 @@ export const APP_ERRORS = {
   },
   EMAIL_MISMATCH: {
     code: 'EMAIL_MISMATCH',
-    message: 'Email Zoho không khớp lời mời',
+    message: 'Email Google không khớp lời mời',
   },
   USER_NOT_REGISTERED: {
     code: 'USER_NOT_REGISTERED',

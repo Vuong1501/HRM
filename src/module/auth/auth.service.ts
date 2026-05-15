@@ -28,7 +28,7 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
-  async loginZoho(profile: Express.User, res: Response, inviteToken?: string) {
+  async loginGoogle(profile: Express.User, res: Response, inviteToken?: string) {
     let user: User | null = null;
 
     if (inviteToken) {
@@ -45,13 +45,13 @@ export class AuthService {
         throw new ForbiddenException(APP_ERRORS.EMAIL_MISMATCH);
 
       user.status = UserStatus.ACTIVE;
-      user.zohoId = profile.zohoId;
+      user.googleId = profile.googleId;
       user.inviteToken = null;
 
       await this.userRepositoy.save(user);
     } else {
       user = await this.userRepositoy.findOne({
-        where: [{ zohoId: profile.zohoId }, { email: profile.email }],
+        where: [{ googleId: profile.googleId }, { email: profile.email }],
       });
 
       if (!user) throw new UnauthorizedException(APP_ERRORS.USER_NOT_REGISTERED);
@@ -59,8 +59,8 @@ export class AuthService {
       if (user.status !== UserStatus.ACTIVE)
         throw new UnauthorizedException(APP_ERRORS.USER_NOT_ACTIVE);
 
-      if (!user.zohoId) {
-        user.zohoId = profile.zohoId;
+      if (!user.googleId) {
+        user.googleId = profile.googleId;
         await this.userRepositoy.save(user);
       }
     }
@@ -68,38 +68,6 @@ export class AuthService {
     return this.generateTokens(user, res);
   }
 
-  // async loginZoho(profile: Express.User) {
-  //   const user = await this.userRepositoy.findOne({
-  //     where: [{ zohoId: profile.zohoId }, { email: profile.email }],
-  //   });
-
-  //   if (!user) throw new UnauthorizedException('User not registered');
-
-  //   // 🛡 status gate
-  //   if (user.status !== UserStatus.ACTIVE)
-  //     throw new UnauthorizedException('User not active');
-
-  //   // 🛡 bind zohoId lần đầu
-  //   if (!user.zohoId) {
-  //     // email match protection
-  //     if (profile.email !== user.email)
-  //       throw new UnauthorizedException('Email mismatch');
-
-  //     user.zohoId = profile.zohoId;
-  //     await this.userRepositoy.save(user);
-  //   }
-
-  //   const payload = {
-  //     sub: user.id,
-  //     email: user.email,
-  //     role: user.role,
-  //   };
-
-  //   return {
-  //     accessToken: await this.jwtService.signAsync(payload),
-  //     user: this.userService.toResponse(user),
-  //   };
-  // }
 
   async devLogin(dto: LoginDevDto, res: Response) {
     if (this.config.get('NODE_ENV') === 'production') {

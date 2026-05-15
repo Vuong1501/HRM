@@ -11,7 +11,7 @@ import {
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
-// import { ZohoAuthGuard } from 'src/common/guards/zoho.guard';
+import { GoogleAuthGuard } from 'src/common/guards/google.guard';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoginDevDto } from './dto/login-dev.dto';
 import { APP_ERRORS } from 'src/common/errors/app.errors';
@@ -29,29 +29,42 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  @Get('zoho')
-  @UseGuards(AuthGuard('zoho'))
-  @ApiOperation({ summary: 'Redirect sang Zoho để đăng nhập' })
-  @ApiResponse({ status: 302, description: 'Redirect tới Zoho OAuth' })
-  loginZoho() {}
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Redirect sang Google để đăng nhập' })
+  @ApiResponse({ status: 302, description: 'Redirect tới Google OAuth' })
+  loginGoogle() {}
 
-  @Get('zoho/callback')
-  @UseGuards(AuthGuard('zoho'))
-  @ApiOperation({ summary: 'Zoho callback + tạo access token & refresh token' })
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Google callback + tạo access token & refresh token' })
   @ApiResponse({ status: 302, description: 'Login thành công và redirect về frontend' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async zohoCallback(@Req() req: Express.Request, @Res() res: Response) {
-    if (!req.user) {
-      throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
-    }
-    const inviteToken = req.cookies.invite_token;
-    const result = await this.authService.loginZoho(req.user, res, inviteToken);
-    res.clearCookie('invite_token');
-
+  async googleCallback(@Req() req: Express.Request, @Res() res: Response) {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-    return res.redirect(
-      `${frontendUrl}/login-success?accessToken=${result.accessToken}`,
-    );
+    
+    try {
+      if (!req.user) {
+        throw new UnauthorizedException(APP_ERRORS.UNAUTHORIZED);
+      }
+      const inviteToken = req.cookies.invite_token;
+      const result = await this.authService.loginGoogle(req.user, res, inviteToken);
+      res.clearCookie('invite_token');
+
+      return res.redirect(
+        `${frontendUrl}/login-success?accessToken=${result.accessToken}`,
+      );
+    } catch (error) {
+      // Bắt các exception (như EMAIL_MISMATCH, USER_NOT_REGISTERED...)
+      // và redirect về trang login kèm mã lỗi để Frontend hiển thị toast/alert
+      
+      const errorCode = error?.response?.code || 'OAUTH_ERROR';
+      const errorMessage = error?.response?.message || 'Đăng nhập thất bại';
+      
+      return res.redirect(
+        `${frontendUrl}/login?error=${errorCode}&message=${encodeURIComponent(errorMessage)}`
+      );
+    }
   }
 
   @Post('dev-login')
