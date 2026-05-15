@@ -41,14 +41,31 @@ export class AuthService {
       if (user.status !== UserStatus.INVITED)
         throw new UnauthorizedException(APP_ERRORS.INVITE_ALREADY_USED);
 
-      if (profile.email !== user.email)
-        throw new ForbiddenException(APP_ERRORS.EMAIL_MISMATCH);
+      if (profile.email !== user.email) {
+        // Email không khớp lời mời. 
+        // Kiểm tra xem email họ chọn có phải là tài khoản ĐÃ ACTIVE trong hệ thống không
+        const existingUser = await this.userRepositoy.findOne({
+          where: [{ googleId: profile.googleId }, { email: profile.email }],
+        });
 
-      user.status = UserStatus.ACTIVE;
-      user.googleId = profile.googleId;
-      user.inviteToken = null;
-
-      await this.userRepositoy.save(user);
+        if (existingUser && existingUser.status === UserStatus.ACTIVE) {
+          // Là nhân viên cũ đang cố login, ta ưu tiên login và bỏ qua tiến trình invite
+          user = existingUser;
+          if (!user.googleId) {
+            user.googleId = profile.googleId;
+            await this.userRepositoy.save(user);
+          }
+        } else {
+          // Không phải tài khoản active -> Ném lỗi mismatch
+          throw new ForbiddenException(APP_ERRORS.EMAIL_MISMATCH);
+        }
+      } else {
+        // Đúng email được mời -> Kích hoạt tài khoản
+        user.status = UserStatus.ACTIVE;
+        user.googleId = profile.googleId;
+        user.inviteToken = null;
+        await this.userRepositoy.save(user);
+      }
     } else {
       user = await this.userRepositoy.findOne({
         where: [{ googleId: profile.googleId }, { email: profile.email }],
