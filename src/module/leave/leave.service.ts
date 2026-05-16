@@ -1540,10 +1540,12 @@ export class LeaveService {
 
     } else if (leaveType === LeaveType.COMPENSATORY) {
       const compBalance = Number(balance.compensatoryBalance);
+      const compBalanceHours = compBalance * LEAVE_CONSTANTS.HOURS_PER_DAY; // đổi sang giờ
+      const leaveDaysHours = leaveDays * LEAVE_CONSTANTS.HOURS_PER_DAY; // đổi sang giờ
       if (leaveDays > compBalance) {
         throw new BadRequestException({
           ...LEAVE_ERRORS.INSUFFICIENT_COMPENSATORY,
-          details: `Bạn chỉ còn ${compBalance} giờ nghỉ bù, không đủ cho ${leaveDays} giờ yêu cầu`,
+          details: `Bạn chỉ còn ${compBalanceHours} giờ nghỉ bù, không đủ cho ${leaveDaysHours} giờ yêu cầu`,
         });
       }
     }

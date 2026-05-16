@@ -131,4 +131,8 @@ export const LEAVE_ERRORS = {
     code: 'LEAVE_MODIFIED',
     message: 'Đơn nghỉ đã bị sửa đổi',
   },
+  INTERN_NOT_ALLOWED: {
+    code: 'INTERN_NOT_ALLOWED',
+    message: 'Thực tập sinh không được tích lũy phép',
+  },
 } as const;
