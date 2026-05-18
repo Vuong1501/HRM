@@ -1,6 +1,8 @@
 export enum InsuranceSubType {
-  MATERNITY = 'maternity',
   MATERNITY_CHECKUP = 'maternity_checkup',
+  MATERNITY_SINGLE = 'maternity_single',
+  MATERNITY_TWINS = 'maternity_twins',
+  MATERNITY_TRIPLETS = 'maternity_triplets',
   SICK = 'sick',
 }
 

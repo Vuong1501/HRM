@@ -17,8 +17,7 @@ export class LeaveSeedService implements OnModuleInit {
   }
 
   private async seedLeaveConfigs() {
-    const count = await this.leaveConfigRepo.count();
-    if (count > 0) return;
+    // Bỏ check count để có thể insert thêm record mới nếu thiếu
 
     const configs = [
       {
@@ -63,9 +62,37 @@ export class LeaveSeedService implements OnModuleInit {
         isPerMonth: true,
         description: 'Khám thai (5 ngày/tháng)',
       },
+      {
+        leaveType: LeaveType.INSURANCE,
+        leaveSubType: InsuranceSubType.MATERNITY_SINGLE,
+        limit: 180, // Thai sản sinh 1 (6 tháng)
+        isPerMonth: false,
+        description: 'Nghỉ thai sản sinh 1 (180 ngày)',
+      },
+      {
+        leaveType: LeaveType.INSURANCE,
+        leaveSubType: InsuranceSubType.MATERNITY_TWINS,
+        limit: 210, // Thai sản sinh đôi (7 tháng)
+        isPerMonth: false,
+        description: 'Nghỉ thai sản sinh đôi (210 ngày)',
+      },
+      {
+        leaveType: LeaveType.INSURANCE,
+        leaveSubType: InsuranceSubType.MATERNITY_TRIPLETS,
+        limit: 240, // Thai sản sinh 3 (8 tháng)
+        isPerMonth: false,
+        description: 'Nghỉ thai sản sinh ba (240 ngày)',
+      },
     ];
 
-    await this.leaveConfigRepo.save(configs);
+    for (const config of configs) {
+      const exists = await this.leaveConfigRepo.findOne({
+        where: { leaveType: config.leaveType, leaveSubType: config.leaveSubType },
+      });
+      if (!exists) {
+        await this.leaveConfigRepo.save(config);
+      }
+    }
     console.log('--- Đã khởi tạo cấu hình hạn mức nghỉ phép (LeaveConfig) ---');
   }
 }

@@ -299,9 +299,8 @@ export class LeaveService {
     return this.getLeaveList(user, query, true);
   }
 
-  /**
-   * Xem số phép còn lại
-   */
+  //Xem số phép còn lại
+  
   async getMyBalance(userId: number) {
     const currentYear = dayjs().year();
     const user = await this.userRepo.findOneBy({ id: userId });
