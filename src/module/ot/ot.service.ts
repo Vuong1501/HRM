@@ -1243,7 +1243,7 @@ export class OtService {
         const isAdmin = user.role === UserRole.ADMIN;
         const isLeadIT = user.role === UserRole.DEPARTMENT_LEAD && user.departmentName === IT_DEPARTMENT;
         const isPc = user.role === UserRole.PROJECT_COORDINATOR;
-        const isLead = user.role === UserRole.DEPARTMENT_LEAD;
+        const isLeadOrHR = user.role === UserRole.DEPARTMENT_LEAD || user.role === UserRole.HR;
         const isPlanFromIT = otPlan.creator.departmentName === IT_DEPARTMENT;
 
         if (isAdmin) {
@@ -1253,7 +1253,7 @@ export class OtService {
             if (!isPlanFromIT) {
                 throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
             }
-        } else if (isLead) {
+        } else if (isLeadOrHR) {
             if (otPlan.creatorId !== user.id) {
                 throw new ForbiddenException(OT_ERRORS.NOT_YOUR_OT_PLAN);
             }
