@@ -127,10 +127,16 @@ export class UsersService {
     };
   }
 
-  // HR cập nhật thông tin user
   async updateUser(userId: number, dto: UpdateUserDto){
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new NotFoundException(USER_ERRORS.USER_NOT_FOUND);
+
+    const newRole = dto.role || user.role;
+    const newDepartment = dto.departmentName || user.departmentName;
+
+    if (newRole === 'pc' && newDepartment !== 'IT') {
+      throw new BadRequestException(USER_ERRORS.PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT);
+    }
 
     // Khi chuyển sang OFFICIAL thì bắt buộc có officialDate
     const isUpgradingToOfficial = 

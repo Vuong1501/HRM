@@ -11,5 +11,11 @@ export const USER_ERRORS = {
     USER_NOT_FOUND: {
         code: 'ERR_USER_NOT_FOUND',
         message: 'Không tìm thấy nhân viên',
-    }
+    },
+
+    PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT: {
+    code: 'ERR_PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT',
+    message: 'Vai trò Project Coordinator chỉ dành cho phòng ban IT',
+},
+
 };

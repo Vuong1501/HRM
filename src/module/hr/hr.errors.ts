@@ -11,4 +11,9 @@ export const HR_ERRORS = {
     code: 'FILE_REQUIRED',
     message: 'Vui lòng cung cấp file Excel',
   },
+    PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT: {
+    code: 'ERR_PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT',
+    message: 'Vai trò Project Coordinator chỉ dành cho phòng ban IT',
+},
+
 } as const;

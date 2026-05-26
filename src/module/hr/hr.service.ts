@@ -45,6 +45,10 @@ export class HrService {
 
   // api mời 1 người
   async invite(userDto: InviteDto) {
+    if (userDto.role === 'pc' && userDto.departmentName !== 'IT') {
+      throw new ConflictException(HR_ERRORS.PC_ROLE_CAN_ONLY_BE_IN_IT_DEPARTMENT);
+    }
+
     const existed = await this.userRepository.findOne({
       where: { email: userDto.email },
     });
@@ -161,6 +165,10 @@ export class HrService {
     for(const userDto of dto.users){
       if (existingEmails.has(userDto.email)) {
         result.failed.push({ user: userDto, reason: 'Email đã tồn tại trong hệ thống' });
+        continue;
+      }
+      if (userDto.role === 'pc' && userDto.departmentName !== 'IT') {
+        result.failed.push({ user: userDto, reason: 'Vai trò Project Coordinator chỉ dành cho phòng ban IT' });
         continue;
       }
       existingEmails.add(userDto.email);
