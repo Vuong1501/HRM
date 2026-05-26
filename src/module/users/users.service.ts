@@ -99,6 +99,8 @@ export class UsersService {
         'user.employmentType',
         'user.phoneNumber',
         'user.startDate',
+        'user.officialDate',
+        'user.address'
       ]);
 
     if (search) {

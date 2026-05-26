@@ -142,7 +142,7 @@ export class LeaveAccrualService {
 
     let totalAccrual = 0;
 
-    for (let m = firstMonthInYear; m <= currentMonth; m++){
+    for (let m = firstMonthInYear; m < currentMonth; m++){
       const isFirstMonth = startDate.year() === currentYear && m === startDate.month();
       if (isFirstMonth) {
           // Tháng đầu tiên: tính % ngày công từ startDate đến cuối tháng
