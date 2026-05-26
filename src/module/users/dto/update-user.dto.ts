@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsDateString, IsString } from 'class-validator';
+import { IsOptional, IsEnum, IsDateString, IsString, Matches } from 'class-validator';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import { EmploymentType } from 'src/common/enums/user-employeeType.enum';
 import { Department } from 'src/common/enums/department.enum';
@@ -30,7 +30,9 @@ export class UpdateUserDto {
     role?: UserRole;
 
     @IsOptional()
-    @IsString()
+    @Matches(/^(0|\+84)[0-9]{9}$/, {
+        message: 'Số điện thoại không đúng định dạng (VD: 0987654321 hoặc +84987654321)'
+    })
     phoneNumber?: string;
 
     @IsOptional()
