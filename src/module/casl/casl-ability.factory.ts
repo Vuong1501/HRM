@@ -34,6 +34,8 @@ export class CaslAbilityFactory {
       can(Action.ViewReport, OtPlanEmployee);
 
       can(Action.Read, LeaveRequest);
+      can(Action.Update, LeaveRequest);
+      can(Action.Cancel, LeaveRequest);
       can(Action.Create, LeaveRequest);
       can(Action.Approve, LeaveRequest);
       can(Action.Reject, LeaveRequest);

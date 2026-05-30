@@ -15,6 +15,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Action } from 'src/common/enums/action.enum';
 import { OtPlan } from './entities/ot-plan.entity';
 import { CreateOtPlanDto } from './dto/create-ot-plan.dto';
+import { ApproveOtPlanDto } from './dto/approve-ot-plan.dto';
 import { CheckPolicies } from 'src/common/decorators/policy.decorator';
 import type { RequestWithUser } from 'src/common/interfaces/request-with-user.interface';
 import { PoliciesGuard } from 'src/common/guards/policies.guard';
@@ -57,8 +58,9 @@ export class OtController {
     approveOtPlan(
         @Req() req: RequestWithUser,
         @Param('id') id: string,
+        @Body() dto: ApproveOtPlanDto,
     ) {
-        return this.otService.approveOtPlan(req.userEntity, Number(id));
+        return this.otService.approveOtPlan(req.userEntity, Number(id), dto.employeeIds);
     }
 
     @Patch('plan/:id/reject')

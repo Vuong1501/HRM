@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In, FindOptionsWhere } from 'typeorm';
+import { Repository, DataSource, In, Not, FindOptionsWhere } from 'typeorm';
 import { OtPlan } from './entities/ot-plan.entity';
 import { OtPlanEmployee } from './entities/ot-plan-employee.entity';
 import { User } from '../users/entities/user.entity';
@@ -714,9 +714,9 @@ export class OtService {
                 .where('ope.employeeId IN (:...employeeIds)', { employeeIds: employees.map(e => e.id) })
                 .andWhere('op.status IN (:...statuses)', { statuses: [OtPlanStatus.APPROVED, OtPlanStatus.PENDING] })
                 // phải không được trùng cả đơn đã tạo(pending, giống như tạo đơn nghỉ)
-                .andWhere('op.startTime <= :endTime AND op.endTime >= :startTime', {
-                    startTime: dto.startTime,
-                    endTime: dto.endTime,
+                .andWhere('op.startTime < :endTime AND op.endTime > :startTime', {
+                    startTime: startTime.toDate(),
+                    endTime: endTime.toDate(),
                 })
                 .getMany();
 
@@ -810,7 +810,7 @@ export class OtService {
         }
     }
 
-    async approveOtPlan(approver: User, otPlanId: number) {
+    async approveOtPlan(approver: User, otPlanId: number, employeeIds?: number[]) {
 
         const isAdmin = approver.role === UserRole.ADMIN;
         const isLeadIT = approver.role === UserRole.DEPARTMENT_LEAD && approver.departmentName === IT_DEPARTMENT;
@@ -858,16 +858,36 @@ export class OtService {
                 throw new BadRequestException(OT_ERRORS.OT_PLAN_NOT_PENDING);
             }
 
-            // update atomic bảng con
-            await queryRunner.manager.update(OtPlanEmployee,
-                {otPlanId: otPlanId},
-                {status: OtPlanEmployeeStatus.PENDING}
-            );
+            // Xử lý duyệt từng phần (Partial Approval)
+            if (employeeIds && employeeIds.length > 0) {
+                // Nhóm 1: Được duyệt -> Chuyển thành PENDING
+                await queryRunner.manager.update(OtPlanEmployee,
+                    {otPlanId: otPlanId, employeeId: In(employeeIds)},
+                    {status: OtPlanEmployeeStatus.PENDING}
+                );
+                
+                // Nhóm 2: Bị gạch tên -> Chuyển thành REJECTED
+                await queryRunner.manager.update(OtPlanEmployee,
+                    {otPlanId: otPlanId, employeeId: Not(In(employeeIds))},
+                    {status: OtPlanEmployeeStatus.REJECTED}
+                );
+            } else {
+                // Nếu không truyền mảng employeeIds (tương thích cũ), duyệt tất cả
+                await queryRunner.manager.update(OtPlanEmployee,
+                    {otPlanId: otPlanId},
+                    {status: OtPlanEmployeeStatus.PENDING}
+                );
+            }
 
             await queryRunner.commitTransaction();
-            // Gửi mail cho từng nhân viên trong background
+            
+            // Gửi mail cho từng nhân viên được duyệt
+            const approvedEmployees = employeeIds && employeeIds.length > 0 
+                ? otPlan.employees.filter(emp => employeeIds.includes(emp.employeeId))
+                : otPlan.employees;
+
             Promise.all(
-                otPlan.employees.map((emp) =>
+                approvedEmployees.map((emp) =>
                     this.mailService.sendMailWithRetry(
                         () => this.mailService.sendOtPlanApproved(
                             emp.employee.email,

@@ -53,8 +53,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(exception); // Trực tiếp truyền exception vào logger để lấy full stack trace
     } else {
       // Lỗi Client (4xx): Log cảnh báo thôi, không cần stack trace
+      const detailLog = detail ? ` - Detail: ${JSON.stringify(detail)}` : '';
       this.logger.warn(
-        `[${request.method}] ${request.url} - Status: ${status} - Message: ${message}`,
+        `[${request.method}] ${request.url} - Status: ${status} - Message: ${message}${detailLog}`,
       );
     }
     // 4. Trả về JSON cho Client
